@@ -20,6 +20,11 @@
 </div>
 
 <main class="game-main">
+  <div class="diff-pick" id="diffPick">
+    <button data-diff="easy">Dễ</button>
+    <button data-diff="med" class="active">Vừa</button>
+    <button data-diff="hard">Khó</button>
+  </div>
   <p id="status" style="margin-top:10px; font-weight:700;">Bấm "Bắt đầu" để chơi</p>
   <div class="simon-board" id="board">
     <div class="simon-pad green" data-color="green"></div>
@@ -30,6 +35,9 @@
   <div style="margin-top:18px; display:flex; gap:10px;">
     <button class="btn" id="start">Bắt đầu</button>
   </div>
+  <p style="color:var(--ink-soft); margin-top:12px; font-size:14px;">
+    Càng lên cao, chuỗi màu chạy càng nhanh. Mức <b>Khó</b> còn phải bấm thật lẹ kẻo hết giờ! ⏰
+  </p>
 </main>
 
 <div class="modal" id="overModal">
@@ -50,6 +58,14 @@
 const COLORS = ['green','red','yellow','blue'];
 const FREQ = { green: 261.63, red: 329.63, yellow: 392.00, blue: 523.25 };
 
+// Each level controls how the sequence is shown and how much time the
+// player gets to answer. Playback also speeds up as the sequence grows.
+const DIFFS = {
+  easy: { flash: 540, gap: 240, speedup:  0, flashFloor: 420, gapFloor: 200, answerMs: 0 },
+  med:  { flash: 380, gap: 150, speedup: 12, flashFloor: 230, gapFloor:  90, answerMs: 0 },
+  hard: { flash: 300, gap:  90, speedup: 18, flashFloor: 150, gapFloor:  55, answerMs: 2200 },
+};
+
 const board = document.getElementById('board');
 const roundEl = document.getElementById('round');
 const bestEl = document.getElementById('best');
@@ -58,12 +74,15 @@ const whoLabel = document.getElementById('whoLabel');
 const overModal = document.getElementById('overModal');
 const overText = document.getElementById('overText');
 const overTitle = document.getElementById('overTitle');
+const diffPick = document.getElementById('diffPick');
 
+let diff = 'med';
 let seq = [];
 let input = [];
 let playing = false;
 let canTouch = false;
 let audio;
+let answerTimer = null;
 
 function syncWho() {
   const p = window.Hub.getPlayer();
@@ -72,8 +91,9 @@ function syncWho() {
   bestEl.textContent = b == null ? '—' : b;
 }
 
-function tone(color) {
+function tone(color, dur) {
   if (window.SFX && !window.SFX.enabled) return;
+  dur = dur || 0.4;
   try {
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
     const o = audio.createOscillator();
@@ -83,22 +103,47 @@ function tone(color) {
     o.connect(g); g.connect(audio.destination);
     g.gain.setValueAtTime(0.001, audio.currentTime);
     g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.4);
-    o.start(); o.stop(audio.currentTime + 0.42);
+    g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + dur);
+    o.start(); o.stop(audio.currentTime + dur + 0.02);
   } catch(e) {}
 }
 
+// Current playback timings — faster as the sequence gets longer.
+function timings() {
+  const cfg = DIFFS[diff];
+  const extra = Math.max(0, seq.length - 1);
+  const flashMs = Math.max(cfg.flashFloor, cfg.flash - extra * cfg.speedup);
+  const gapMs = Math.max(cfg.gapFloor, cfg.gap - extra * (cfg.speedup / 2));
+  return { flashMs, gapMs };
+}
+
 function flash(color) {
+  const { flashMs, gapMs } = timings();
   return new Promise(res => {
     const pad = board.querySelector(`[data-color="${color}"]`);
     pad.classList.add('flash');
-    tone(color);
-    setTimeout(() => { pad.classList.remove('flash'); setTimeout(res, 180); }, 380);
+    tone(color, flashMs / 1000);
+    setTimeout(() => { pad.classList.remove('flash'); setTimeout(res, gapMs); }, flashMs);
   });
+}
+
+function clearAnswerTimer() {
+  if (answerTimer) { clearTimeout(answerTimer); answerTimer = null; }
+}
+
+// On hard mode the player must keep tapping before time runs out.
+function armAnswerTimer() {
+  clearAnswerTimer();
+  const ms = DIFFS[diff].answerMs;
+  if (!ms || !playing) return;
+  answerTimer = setTimeout(() => {
+    if (canTouch && playing) { status.textContent = '⏰ Chậm quá!'; gameOver(); }
+  }, ms);
 }
 
 async function playSeq() {
   canTouch = false;
+  clearAnswerTimer();
   status.textContent = '👀 Nhìn kỹ chuỗi màu nha...';
   for (const c of seq) {
     await flash(c);
@@ -106,6 +151,7 @@ async function playSeq() {
   status.textContent = '✋ Đến lượt bạn!';
   canTouch = true;
   input = [];
+  armAnswerTimer();
 }
 
 function nextRound() {
@@ -116,13 +162,17 @@ function nextRound() {
 
 function start() {
   overModal.classList.remove('open');
+  clearAnswerTimer();
   seq = []; input = []; playing = true;
   roundEl.textContent = 0;
+  diffPick.classList.add('locked');
   nextRound();
 }
 
 function gameOver() {
   playing = false; canTouch = false;
+  clearAnswerTimer();
+  diffPick.classList.remove('locked');
   window.SFX && window.SFX.gameover();
   const score = seq.length - 1;
   const improved = window.Hub.saveBest('simon', score, 'high');
@@ -142,10 +192,20 @@ board.addEventListener('click', (e) => {
   if (input[i] !== seq[i]) return gameOver();
   if (input.length === seq.length) {
     canTouch = false;
+    clearAnswerTimer();
     status.textContent = '👏 Tuyệt vời!';
     window.SFX && window.SFX.correct();
     setTimeout(nextRound, 800);
+  } else {
+    armAnswerTimer();
   }
+});
+
+diffPick.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b || playing) return;
+  document.querySelectorAll('#diffPick button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  diff = b.dataset.diff;
 });
 
 document.getElementById('start').addEventListener('click', start);
