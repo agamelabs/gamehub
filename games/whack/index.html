@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Đập Sóc · GameHub</title>
+<link rel="stylesheet" href="../../css/style.css" />
+</head>
+<body class="game-page">
+<div class="game-topbar">
+  <a class="back" href="../../">← Trang chủ</a>
+  <div>
+    <h1>🐿️ Đập Sóc</h1>
+    <div class="who" id="whoLabel"></div>
+  </div>
+  <div class="stats">
+    <div class="stat">Điểm:<b id="score">0</b><span class="whack-combo-badge" id="comboBadge" hidden>x2</span></div>
+    <div class="stat">⏱<b id="time">60</b></div>
+    <div class="stat">🏆<b id="best">—</b></div>
+  </div>
+</div>
+
+<main class="game-main">
+  <div class="whack-stage">
+    <div class="whack-board" id="board"></div>
+    <div class="whack-overlay" id="overlay">
+      <div>
+        <div style="font-size:64px">🐿️</div>
+        <h2 style="margin:8px 0 4px">Sẵn sàng chưa?</h2>
+        <p style="margin:0 0 14px;color:var(--ink-soft)">Tap nhanh các bạn nhảy ra. Tránh gấu 🐻!</p>
+        <button class="btn" id="startBtn">Bắt đầu</button>
+      </div>
+    </div>
+  </div>
+  <p class="whack-hint">🐿️ +1 · 🐰 +2 · 🦔 +3 · 🐻 −3 · 🍄 combo x2</p>
+</main>
+
+<div class="modal" id="overModal">
+  <div class="box">
+    <div style="font-size:48px">🏁</div>
+    <h2>Hết giờ!</h2>
+    <p id="overText">Bạn được … điểm.</p>
+    <div class="actions">
+      <button class="btn" id="playAgain">Chơi lại</button>
+      <a class="btn ghost" href="../../">Về trang chủ</a>
+    </div>
+  </div>
+</div>
+
+<script src="../../js/main.js"></script>
+<script>
+const board = document.getElementById('board');
+const overlay = document.getElementById('overlay');
+const scoreEl = document.getElementById('score');
+const timeEl = document.getElementById('time');
+const bestEl = document.getElementById('best');
+const comboBadge = document.getElementById('comboBadge');
+const overModal = document.getElementById('overModal');
+const overText = document.getElementById('overText');
+
+const HOLES = 9;
+const ROUND_SECONDS = 60;
+const CRITTERS = [
+  { id: 'squirrel', emoji: '🐿️', points:  1, weight: 60, bad: false },
+  { id: 'rabbit',   emoji: '🐰', points:  2, weight: 22, bad: false },
+  { id: 'hedge',    emoji: '🦔', points:  3, weight: 10, bad: false },
+  { id: 'bear',     emoji: '🐻', points: -3, weight:  5, bad: true  },
+  { id: 'mushroom', emoji: '🍄', points:  5, weight:  3, bad: false, combo: true },
+];
+const TOTAL_WEIGHT = CRITTERS.reduce((s, c) => s + c.weight, 0);
+
+let score = 0;
+let timeLeft = ROUND_SECONDS;
+let running = false;
+let spawnTimer = null;
+let countdownTimer = null;
+let comboUntil = 0;
+const occupied = new Array(HOLES).fill(false);
+
+function syncBest() {
+  const b = window.Hub.getBest('whack');
+  bestEl.textContent = b == null ? '—' : b;
+}
+
+function buildBoard() {
+  board.innerHTML = '';
+  for (let i = 0; i < HOLES; i++) {
+    const hole = document.createElement('div');
+    hole.className = 'whack-hole';
+    hole.dataset.idx = i;
+    board.appendChild(hole);
+  }
+}
+
+function progress() {
+  return Math.min(1, (ROUND_SECONDS - timeLeft) / ROUND_SECONDS);
+}
+
+function currentStayMs() {
+  const p = progress();
+  return Math.round(1400 - 700 * p);
+}
+
+function currentSpawnMs() {
+  const p = progress();
+  return Math.round(800 - 450 * p);
+}
+
+function pickCritter() {
+  let r = Math.random() * TOTAL_WEIGHT;
+  for (const c of CRITTERS) {
+    r -= c.weight;
+    if (r <= 0) return c;
+  }
+  return CRITTERS[0];
+}
+
+function comboActive() {
+  return performance.now() < comboUntil;
+}
+
+function updateComboBadge() {
+  comboBadge.hidden = !comboActive();
+  board.classList.toggle('combo', comboActive());
+}
+
+function showFloat(hole, text, kind) {
+  const el = document.createElement('div');
+  el.className = 'whack-float ' + kind;
+  el.textContent = text;
+  hole.appendChild(el);
+  setTimeout(() => el.remove(), 800);
+}
+
+function spawn() {
+  if (!running) return;
+  const free = [];
+  for (let i = 0; i < HOLES; i++) if (!occupied[i]) free.push(i);
+  if (!free.length) return;
+  const idx = free[Math.floor(Math.random() * free.length)];
+  const hole = board.children[idx];
+  const critter = pickCritter();
+  occupied[idx] = true;
+
+  const el = document.createElement('div');
+  el.className = 'whack-critter';
+  el.textContent = critter.emoji;
+  el.dataset.points = critter.points;
+  el.dataset.bad = critter.bad ? '1' : '0';
+  el.dataset.combo = critter.combo ? '1' : '0';
+  hole.appendChild(el);
+
+  requestAnimationFrame(() => el.classList.add('up'));
+
+  const stay = currentStayMs();
+  const hideAt = setTimeout(() => retract(idx, el), stay);
+  el.dataset.timer = hideAt;
+
+  const onTap = (e) => {
+    e.preventDefault();
+    if (el.classList.contains('hit')) return;
+    clearTimeout(Number(el.dataset.timer));
+    handleHit(idx, el, critter, hole);
+  };
+  el.addEventListener('click', onTap);
+  el.addEventListener('touchstart', onTap, { passive: false });
+}
+
+function retract(idx, el) {
+  if (!el.isConnected) { occupied[idx] = false; return; }
+  el.classList.remove('up');
+  setTimeout(() => {
+    el.remove();
+    occupied[idx] = false;
+  }, 220);
+}
+
+function handleHit(idx, el, critter, hole) {
+  el.classList.add('hit');
+  const mult = (!critter.bad && comboActive()) ? 2 : 1;
+  const delta = critter.points * mult;
+  score = Math.max(0, score + delta);
+  scoreEl.textContent = score;
+
+  if (critter.bad) {
+    board.classList.add('bad');
+    setTimeout(() => board.classList.remove('bad'), 350);
+    showFloat(hole, delta + '', 'minus');
+  } else {
+    const sign = delta >= 0 ? '+' : '';
+    showFloat(hole, sign + delta, 'plus');
+    if (critter.combo) {
+      comboUntil = performance.now() + 5000;
+      updateComboBadge();
+    }
+  }
+
+  setTimeout(() => {
+    if (el.isConnected) el.remove();
+    occupied[idx] = false;
+  }, 250);
+}
+
+function scheduleSpawn() {
+  if (!running) return;
+  spawn();
+  spawnTimer = setTimeout(scheduleSpawn, currentSpawnMs());
+}
+
+function tick() {
+  if (!running) return;
+  timeLeft -= 1;
+  timeEl.textContent = timeLeft;
+  updateComboBadge();
+  if (timeLeft <= 0) {
+    end();
+  }
+}
+
+function start() {
+  overlay.hidden = true;
+  score = 0;
+  timeLeft = ROUND_SECONDS;
+  comboUntil = 0;
+  scoreEl.textContent = '0';
+  timeEl.textContent = String(ROUND_SECONDS);
+  updateComboBadge();
+  board.innerHTML = '';
+  buildBoard();
+  occupied.fill(false);
+  running = true;
+  scheduleSpawn();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+function end() {
+  running = false;
+  clearTimeout(spawnTimer);
+  clearInterval(countdownTimer);
+  // hide any visible critters
+  document.querySelectorAll('.whack-critter').forEach((el) => el.classList.remove('up'));
+  const improved = window.Hub.saveBest('whack', score, 'high');
+  syncBest();
+  overText.textContent = `Bạn được ${score} điểm.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
+  overModal.classList.add('open');
+}
+
+function runCountdown(then) {
+  overlay.hidden = false;
+  let n = 3;
+  overlay.innerHTML = `<div class="whack-countdown">${n}</div>`;
+  const id = setInterval(() => {
+    n -= 1;
+    if (n > 0) {
+      overlay.innerHTML = `<div class="whack-countdown">${n}</div>`;
+    } else if (n === 0) {
+      overlay.innerHTML = `<div class="whack-countdown">Đi!</div>`;
+    } else {
+      clearInterval(id);
+      then();
+    }
+  }, 700);
+}
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  runCountdown(start);
+});
+
+document.getElementById('playAgain').addEventListener('click', () => {
+  overModal.classList.remove('open');
+  runCountdown(start);
+});
+
+buildBoard();
+syncBest();
+</script>
+</body>
+</html>
