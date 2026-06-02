@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cờ Caro · GameHub</title>
+<link rel="stylesheet" href="../../css/style.css" />
+</head>
+<body class="game-page">
+<div class="game-topbar">
+  <a class="back" href="../../">← Trang chủ</a>
+  <div>
+    <h1>⭕ Cờ Caro</h1>
+    <div class="who" id="whoLabel"></div>
+  </div>
+  <div class="stats">
+    <div class="stat">X:<b id="xScore">0</b></div>
+    <div class="stat">O:<b id="oScore">0</b></div>
+    <div class="stat">Hòa:<b id="dScore">0</b></div>
+  </div>
+</div>
+
+<main class="game-main">
+  <div class="diff-pick" id="modePick">
+    <button data-mode="pvp" class="active">2 người</button>
+    <button data-mode="easy">Máy (dễ)</button>
+    <button data-mode="hard">Máy (khó)</button>
+  </div>
+  <div id="turn" style="margin-top:14px; font-weight:700;">Lượt: <span id="turnLabel">X</span></div>
+  <div class="ttt-board" id="board"></div>
+  <div style="margin-top:18px; display:flex; gap:10px;">
+    <button class="btn" id="newRound">Ván mới</button>
+    <button class="btn ghost" id="resetScore">Reset điểm</button>
+  </div>
+</main>
+
+<script src="../../js/main.js"></script>
+<script>
+const board = document.getElementById('board');
+const turnLabel = document.getElementById('turnLabel');
+const xScoreEl = document.getElementById('xScore');
+const oScoreEl = document.getElementById('oScore');
+const dScoreEl = document.getElementById('dScore');
+const whoLabel = document.getElementById('whoLabel');
+
+let cells = Array(9).fill('');
+let current = 'X';
+let mode = 'pvp';
+let scores = { X: 0, O: 0, D: 0 };
+let gameOver = false;
+
+const WINS = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6],
+];
+
+function syncWho() {
+  const p = window.Hub.getPlayer();
+  whoLabel.textContent = p ? `${p.avatar} ${p.name}` : '';
+}
+
+function render() {
+  board.innerHTML = '';
+  cells.forEach((v, i) => {
+    const b = document.createElement('button');
+    b.className = 'ttt-cell' + (v ? ' ' + v.toLowerCase() : '');
+    b.textContent = v;
+    b.addEventListener('click', () => play(i));
+    board.appendChild(b);
+  });
+  turnLabel.textContent = current;
+}
+
+function checkWin(c, p) {
+  for (const line of WINS) {
+    if (line.every(i => c[i] === p)) return line;
+  }
+  return null;
+}
+
+function highlight(line) {
+  [...board.children].forEach((el, i) => { if (line.includes(i)) el.classList.add('win'); });
+}
+
+function endRound(winner, line) {
+  gameOver = true;
+  if (winner) { scores[winner]++; highlight(line); }
+  else scores.D++;
+  xScoreEl.textContent = scores.X;
+  oScoreEl.textContent = scores.O;
+  dScoreEl.textContent = scores.D;
+}
+
+function play(i) {
+  if (gameOver || cells[i]) return;
+  cells[i] = current;
+  render();
+  const w = checkWin(cells, current);
+  if (w) { endRound(current, w); return; }
+  if (cells.every(Boolean)) { endRound(null); return; }
+  current = current === 'X' ? 'O' : 'X';
+  turnLabel.textContent = current;
+  if ((mode === 'easy' || mode === 'hard') && current === 'O') {
+    setTimeout(aiMove, 350);
+  }
+}
+
+function aiMove() {
+  let pick;
+  if (mode === 'easy') {
+    const empty = cells.map((v,i)=>v?null:i).filter(v=>v!==null);
+    pick = empty[Math.floor(Math.random()*empty.length)];
+  } else {
+    pick = bestMove();
+  }
+  if (pick != null) play(pick);
+}
+
+function bestMove() {
+  // Minimax
+  let best = -Infinity, move = null;
+  for (let i = 0; i < 9; i++) {
+    if (!cells[i]) {
+      cells[i] = 'O';
+      const score = minimax(cells, 0, false);
+      cells[i] = '';
+      if (score > best) { best = score; move = i; }
+    }
+  }
+  return move;
+}
+
+function minimax(c, depth, isMax) {
+  if (checkWin(c, 'O')) return 10 - depth;
+  if (checkWin(c, 'X')) return depth - 10;
+  if (c.every(Boolean)) return 0;
+  if (isMax) {
+    let best = -Infinity;
+    for (let i = 0; i < 9; i++) if (!c[i]) {
+      c[i] = 'O'; best = Math.max(best, minimax(c, depth+1, false)); c[i] = '';
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (let i = 0; i < 9; i++) if (!c[i]) {
+      c[i] = 'X'; best = Math.min(best, minimax(c, depth+1, true)); c[i] = '';
+    }
+    return best;
+  }
+}
+
+function newRound() {
+  cells = Array(9).fill('');
+  current = 'X';
+  gameOver = false;
+  render();
+}
+
+document.getElementById('modePick').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#modePick button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  mode = b.dataset.mode;
+  newRound();
+});
+
+document.getElementById('newRound').addEventListener('click', newRound);
+document.getElementById('resetScore').addEventListener('click', () => {
+  scores = { X: 0, O: 0, D: 0 };
+  xScoreEl.textContent = 0; oScoreEl.textContent = 0; dScoreEl.textContent = 0;
+  newRound();
+});
+
+syncWho();
+newRound();
+</script>
+</body>
+</html>

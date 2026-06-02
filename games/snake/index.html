@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rắn Săn Mồi · GameHub</title>
+<link rel="stylesheet" href="../../css/style.css" />
+</head>
+<body class="game-page">
+<div class="game-topbar">
+  <a class="back" href="../../">← Trang chủ</a>
+  <div>
+    <h1>🐍 Rắn Săn Mồi</h1>
+    <div class="who" id="whoLabel"></div>
+  </div>
+  <div class="stats">
+    <div class="stat">Điểm:<b id="score">0</b></div>
+    <div class="stat">🏆<b id="best">—</b></div>
+  </div>
+</div>
+
+<main class="game-main">
+  <div class="diff-pick" id="speedPick">
+    <button data-speed="160" class="active">Chậm</button>
+    <button data-speed="110">Vừa</button>
+    <button data-speed="70">Nhanh</button>
+  </div>
+  <canvas id="snakeCanvas" width="400" height="400" style="margin-top:14px;"></canvas>
+  <div class="touch-pad">
+    <button class="up" data-dir="up">⬆️</button>
+    <button class="left" data-dir="left">⬅️</button>
+    <button class="right" data-dir="right">➡️</button>
+    <button class="down" data-dir="down">⬇️</button>
+  </div>
+  <div style="margin-top:14px; display:flex; gap:10px;">
+    <button class="btn" id="start">Bắt đầu</button>
+    <button class="btn ghost" id="pause">Tạm dừng</button>
+  </div>
+  <p style="color:var(--ink-soft); margin-top:10px;">Dùng phím mũi tên / WASD hoặc các nút bên trên.</p>
+</main>
+
+<div class="modal" id="overModal">
+  <div class="box">
+    <div style="font-size:48px">😅</div>
+    <h2>Hết lượt!</h2>
+    <p id="overText"></p>
+    <div class="actions">
+      <button class="btn" id="restart">Chơi lại</button>
+      <a class="btn ghost" href="../../">Về trang chủ</a>
+    </div>
+  </div>
+</div>
+
+<script src="../../js/main.js"></script>
+<script>
+const canvas = document.getElementById('snakeCanvas');
+const ctx = canvas.getContext('2d');
+const SIZE = 20;
+const COLS = canvas.width / SIZE;
+const ROWS = canvas.height / SIZE;
+
+let snake, dir, nextDir, food, score, speed, timer, running;
+const scoreEl = document.getElementById('score');
+const bestEl = document.getElementById('best');
+const whoLabel = document.getElementById('whoLabel');
+const overModal = document.getElementById('overModal');
+const overText = document.getElementById('overText');
+
+function syncWho() {
+  const p = window.Hub.getPlayer();
+  whoLabel.textContent = p ? `${p.avatar} ${p.name}` : '';
+  const b = window.Hub.getBest('snake');
+  bestEl.textContent = b == null ? '—' : b;
+}
+
+function reset() {
+  snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+  dir = {x:1,y:0}; nextDir = {x:1,y:0};
+  score = 0; scoreEl.textContent = 0;
+  placeFood();
+  draw();
+}
+
+function placeFood() {
+  while (true) {
+    const f = { x: Math.floor(Math.random()*COLS), y: Math.floor(Math.random()*ROWS) };
+    if (!snake.some(s => s.x === f.x && s.y === f.y)) { food = f; return; }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#0c1224';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // grid lines very subtle
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  for (let i=0;i<=COLS;i++) {
+    ctx.beginPath(); ctx.moveTo(i*SIZE,0); ctx.lineTo(i*SIZE,canvas.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,i*SIZE); ctx.lineTo(canvas.width,i*SIZE); ctx.stroke();
+  }
+
+  // food
+  ctx.fillStyle = '#ff6b9a';
+  ctx.beginPath();
+  ctx.arc(food.x*SIZE+SIZE/2, food.y*SIZE+SIZE/2, SIZE/2-2, 0, Math.PI*2);
+  ctx.fill();
+
+  // snake
+  snake.forEach((s, i) => {
+    ctx.fillStyle = i === 0 ? '#65d36e' : '#4ec3ff';
+    ctx.fillRect(s.x*SIZE+1, s.y*SIZE+1, SIZE-2, SIZE-2);
+  });
+}
+
+function step() {
+  dir = nextDir;
+  const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+  if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) return gameOver();
+  if (snake.some(s => s.x === head.x && s.y === head.y)) return gameOver();
+  snake.unshift(head);
+  if (head.x === food.x && head.y === food.y) {
+    score++; scoreEl.textContent = score;
+    placeFood();
+  } else {
+    snake.pop();
+  }
+  draw();
+}
+
+function gameOver() {
+  stop();
+  const improved = window.Hub.saveBest('snake', score, 'high');
+  bestEl.textContent = window.Hub.getBest('snake');
+  overText.textContent = `Bạn ăn được ${score} quả táo.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
+  overModal.classList.add('open');
+}
+
+function start() {
+  overModal.classList.remove('open');
+  reset();
+  running = true;
+  clearInterval(timer);
+  timer = setInterval(step, speed);
+}
+
+function stop() { running = false; clearInterval(timer); }
+
+function setDir(d) {
+  const map = {
+    up:    {x:0,y:-1},
+    down:  {x:0,y:1},
+    left:  {x:-1,y:0},
+    right: {x:1,y:0},
+  };
+  const nd = map[d];
+  if (!nd) return;
+  if (nd.x === -dir.x && nd.y === -dir.y) return; // no reverse
+  nextDir = nd;
+}
+
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === 'arrowup' || k === 'w') setDir('up');
+  else if (k === 'arrowdown' || k === 's') setDir('down');
+  else if (k === 'arrowleft' || k === 'a') setDir('left');
+  else if (k === 'arrowright' || k === 'd') setDir('right');
+});
+
+document.querySelectorAll('.touch-pad button').forEach(b => {
+  b.addEventListener('click', () => setDir(b.dataset.dir));
+});
+
+document.getElementById('speedPick').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#speedPick button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  speed = +b.dataset.speed;
+  if (running) { clearInterval(timer); timer = setInterval(step, speed); }
+});
+
+document.getElementById('start').addEventListener('click', start);
+document.getElementById('pause').addEventListener('click', () => {
+  if (running) stop();
+  else { running = true; timer = setInterval(step, speed); }
+});
+document.getElementById('restart').addEventListener('click', () => { overModal.classList.remove('open'); start(); });
+
+speed = 160;
+syncWho();
+reset();
+</script>
+</body>
+</html>

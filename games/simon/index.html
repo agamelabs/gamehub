@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nhớ Màu · GameHub</title>
+<link rel="stylesheet" href="../../css/style.css" />
+</head>
+<body class="game-page">
+<div class="game-topbar">
+  <a class="back" href="../../">← Trang chủ</a>
+  <div>
+    <h1>🎨 Nhớ Màu</h1>
+    <div class="who" id="whoLabel"></div>
+  </div>
+  <div class="stats">
+    <div class="stat">Vòng:<b id="round">0</b></div>
+    <div class="stat">🏆<b id="best">—</b></div>
+  </div>
+</div>
+
+<main class="game-main">
+  <p id="status" style="margin-top:10px; font-weight:700;">Bấm "Bắt đầu" để chơi</p>
+  <div class="simon-board" id="board">
+    <div class="simon-pad green" data-color="green"></div>
+    <div class="simon-pad red" data-color="red"></div>
+    <div class="simon-pad yellow" data-color="yellow"></div>
+    <div class="simon-pad blue" data-color="blue"></div>
+  </div>
+  <div style="margin-top:18px; display:flex; gap:10px;">
+    <button class="btn" id="start">Bắt đầu</button>
+  </div>
+</main>
+
+<div class="modal" id="overModal">
+  <div class="box">
+    <div style="font-size:48px">🌟</div>
+    <h2 id="overTitle">Hết lượt!</h2>
+    <p id="overText"></p>
+    <div class="actions">
+      <button class="btn" id="restart">Chơi lại</button>
+      <a class="btn ghost" href="../../">Về trang chủ</a>
+    </div>
+  </div>
+</div>
+
+<script src="../../js/main.js"></script>
+<script>
+const COLORS = ['green','red','yellow','blue'];
+const FREQ = { green: 261.63, red: 329.63, yellow: 392.00, blue: 523.25 };
+
+const board = document.getElementById('board');
+const roundEl = document.getElementById('round');
+const bestEl = document.getElementById('best');
+const status = document.getElementById('status');
+const whoLabel = document.getElementById('whoLabel');
+const overModal = document.getElementById('overModal');
+const overText = document.getElementById('overText');
+const overTitle = document.getElementById('overTitle');
+
+let seq = [];
+let input = [];
+let playing = false;
+let canTouch = false;
+let audio;
+
+function syncWho() {
+  const p = window.Hub.getPlayer();
+  whoLabel.textContent = p ? `${p.avatar} ${p.name}` : '';
+  const b = window.Hub.getBest('simon');
+  bestEl.textContent = b == null ? '—' : b;
+}
+
+function tone(color) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator();
+    const g = audio.createGain();
+    o.frequency.value = FREQ[color];
+    o.type = 'sine';
+    o.connect(g); g.connect(audio.destination);
+    g.gain.setValueAtTime(0.001, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.4);
+    o.start(); o.stop(audio.currentTime + 0.42);
+  } catch(e) {}
+}
+
+function flash(color) {
+  return new Promise(res => {
+    const pad = board.querySelector(`[data-color="${color}"]`);
+    pad.classList.add('flash');
+    tone(color);
+    setTimeout(() => { pad.classList.remove('flash'); setTimeout(res, 180); }, 380);
+  });
+}
+
+async function playSeq() {
+  canTouch = false;
+  status.textContent = '👀 Nhìn kỹ chuỗi màu nha...';
+  for (const c of seq) {
+    await flash(c);
+  }
+  status.textContent = '✋ Đến lượt bạn!';
+  canTouch = true;
+  input = [];
+}
+
+function nextRound() {
+  seq.push(COLORS[Math.floor(Math.random()*4)]);
+  roundEl.textContent = seq.length;
+  setTimeout(playSeq, 500);
+}
+
+function start() {
+  overModal.classList.remove('open');
+  seq = []; input = []; playing = true;
+  roundEl.textContent = 0;
+  nextRound();
+}
+
+function gameOver() {
+  playing = false; canTouch = false;
+  const score = seq.length - 1;
+  const improved = window.Hub.saveBest('simon', score, 'high');
+  bestEl.textContent = window.Hub.getBest('simon');
+  overTitle.textContent = score > 0 ? 'Chơi giỏi!' : 'Chưa nhớ kịp!';
+  overText.textContent = `Bạn nhớ được ${score} vòng.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
+  overModal.classList.add('open');
+}
+
+board.addEventListener('click', (e) => {
+  const pad = e.target.closest('.simon-pad');
+  if (!pad || !canTouch || !playing) return;
+  const c = pad.dataset.color;
+  flash(c);
+  input.push(c);
+  const i = input.length - 1;
+  if (input[i] !== seq[i]) return gameOver();
+  if (input.length === seq.length) {
+    canTouch = false;
+    status.textContent = '👏 Tuyệt vời!';
+    setTimeout(nextRound, 800);
+  }
+});
+
+document.getElementById('start').addEventListener('click', start);
+document.getElementById('restart').addEventListener('click', start);
+
+syncWho();
+</script>
+</body>
+</html>

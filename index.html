@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GameHub - Hè Vui Vẻ</title>
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E" />
+</head>
+<body class="home">
+<header class="hero">
+  <h1>🎮 GameHub</h1>
+  <p class="tagline">Hè vui cùng <strong>Minh An</strong> & <strong>Quang Minh</strong></p>
+</header>
+
+<section class="player-picker" id="playerPicker">
+  <h2>Bạn là ai?</h2>
+  <div class="players">
+    <button class="player-card" data-player="minhan">
+      <span class="avatar">🦊</span>
+      <span class="name">Minh An</span>
+      <span class="age">6 tuổi</span>
+    </button>
+    <button class="player-card" data-player="quangminh">
+      <span class="avatar">🐯</span>
+      <span class="name">Quang Minh</span>
+      <span class="age">13 tuổi</span>
+    </button>
+  </div>
+</section>
+
+<section class="hub" id="hub" hidden>
+  <div class="welcome">
+    <span id="welcomeAvatar">🦊</span>
+    <h2>Chào <span id="welcomeName">bạn</span>! Chọn game nha</h2>
+    <button class="switch-btn" id="switchBtn">Đổi người chơi</button>
+  </div>
+
+  <div class="game-grid">
+    <a class="game-card c1" href="games/memory/" data-tag="cả nhà">
+      <span class="icon">🧠</span>
+      <h3>Tìm Cặp</h3>
+      <p>Lật thẻ tìm cặp giống nhau</p>
+      <span class="best" data-game="memory">—</span>
+    </a>
+    <a class="game-card c2" href="games/tictactoe/" data-tag="2 người">
+      <span class="icon">⭕</span>
+      <h3>Cờ Caro</h3>
+      <p>X và O, ai thắng?</p>
+      <span class="best" data-game="tictactoe">—</span>
+    </a>
+    <a class="game-card c3" href="games/snake/" data-tag="cả nhà">
+      <span class="icon">🐍</span>
+      <h3>Rắn Săn Mồi</h3>
+      <p>Ăn táo, đừng đụng tường!</p>
+      <span class="best" data-game="snake">—</span>
+    </a>
+    <a class="game-card c4" href="games/simon/" data-tag="trí nhớ">
+      <span class="icon">🎨</span>
+      <h3>Nhớ Màu</h3>
+      <p>Lặp lại chuỗi màu sắc</p>
+      <span class="best" data-game="simon">—</span>
+    </a>
+    <a class="game-card c5" href="games/math/" data-tag="học mà chơi">
+      <span class="icon">➕</span>
+      <h3>Đố Toán</h3>
+      <p>Tính nhanh, ăn điểm cao</p>
+      <span class="best" data-game="math">—</span>
+    </a>
+    <a class="game-card c6" href="games/2048/" data-tag="thử thách">
+      <span class="icon">🔢</span>
+      <h3>2048</h3>
+      <p>Ghép số đạt 2048</p>
+      <span class="best" data-game="2048">—</span>
+    </a>
+  </div>
+
+  <footer class="hub-footer">
+    <p>Chúc các con có một mùa hè thật vui! 🌞🌴🍉</p>
+  </footer>
+</section>
+
+<script src="js/main.js"></script>
+</body>
+</html>

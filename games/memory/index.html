@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tìm Cặp · GameHub</title>
+<link rel="stylesheet" href="../../css/style.css" />
+</head>
+<body class="game-page">
+<div class="game-topbar">
+  <a class="back" href="../../">← Trang chủ</a>
+  <div>
+    <h1>🧠 Tìm Cặp</h1>
+    <div class="who" id="whoLabel"></div>
+  </div>
+  <div class="stats">
+    <div class="stat">Lượt:<b id="moves">0</b></div>
+    <div class="stat">Cặp:<b id="pairs">0</b></div>
+    <div class="stat">🏆<b id="best">—</b></div>
+  </div>
+</div>
+
+<main class="game-main">
+  <div class="diff-pick" id="diffPick">
+    <button data-rows="3" data-cols="4" class="active">Dễ (3×4)</button>
+    <button data-rows="4" data-cols="4">Trung bình (4×4)</button>
+    <button data-rows="4" data-cols="6">Khó (4×6)</button>
+  </div>
+  <div id="board" class="memory-board"></div>
+  <div style="margin-top:18px; display:flex; gap:10px;">
+    <button class="btn" id="restart">Chơi lại</button>
+  </div>
+</main>
+
+<div class="modal" id="winModal">
+  <div class="box">
+    <div style="font-size:48px">🎉</div>
+    <h2>Giỏi quá!</h2>
+    <p id="winText">Bạn hoàn thành trong … lượt.</p>
+    <div class="actions">
+      <button class="btn" id="playAgain">Chơi nữa</button>
+      <a class="btn ghost" href="../../">Về trang chủ</a>
+    </div>
+  </div>
+</div>
+
+<script src="../../js/main.js"></script>
+<script>
+const EMOJIS = ['🐶','🐱','🐰','🐼','🐸','🐵','🦁','🐯','🐨','🐮','🐷','🐔','🦄','🐙','🐝','🦋','🐢','🐳'];
+
+const board = document.getElementById('board');
+const movesEl = document.getElementById('moves');
+const pairsEl = document.getElementById('pairs');
+const bestEl = document.getElementById('best');
+const whoLabel = document.getElementById('whoLabel');
+const winModal = document.getElementById('winModal');
+const winText = document.getElementById('winText');
+
+let rows = 3, cols = 4;
+let deck = [];
+let first = null;
+let lock = false;
+let moves = 0;
+let pairs = 0;
+let totalPairs = 0;
+
+function syncWho() {
+  const p = window.Hub.getPlayer();
+  whoLabel.textContent = p ? `${p.avatar} ${p.name}` : '';
+  const b = window.Hub.getBest('memory');
+  bestEl.textContent = b == null ? '—' : b;
+}
+
+function setup() {
+  syncWho();
+  totalPairs = (rows * cols) / 2;
+  moves = 0; pairs = 0;
+  movesEl.textContent = '0';
+  pairsEl.textContent = '0';
+  board.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  board.style.maxWidth = (cols * 90) + 'px';
+  const picks = EMOJIS.slice(0, totalPairs);
+  deck = [...picks, ...picks].sort(() => Math.random() - 0.5);
+  board.innerHTML = '';
+  deck.forEach((emoji, i) => {
+    const card = document.createElement('div');
+    card.className = 'mem-card';
+    card.dataset.idx = i;
+    card.innerHTML = `<div class="inner"><div class="face front">?</div><div class="face back">${emoji}</div></div>`;
+    card.addEventListener('click', () => flip(card));
+    board.appendChild(card);
+  });
+  first = null; lock = false;
+}
+
+function flip(card) {
+  if (lock) return;
+  if (card.classList.contains('flipped') || card.classList.contains('matched')) return;
+  card.classList.add('flipped');
+  if (!first) { first = card; return; }
+  moves++; movesEl.textContent = moves;
+  const a = deck[first.dataset.idx];
+  const b = deck[card.dataset.idx];
+  if (a === b) {
+    first.classList.add('matched');
+    card.classList.add('matched');
+    first = null;
+    pairs++; pairsEl.textContent = pairs;
+    if (pairs === totalPairs) setTimeout(win, 350);
+  } else {
+    lock = true;
+    const f = first;
+    setTimeout(() => {
+      f.classList.remove('flipped');
+      card.classList.remove('flipped');
+      first = null; lock = false;
+    }, 700);
+  }
+}
+
+function win() {
+  const improved = window.Hub.saveBest('memory', moves, 'low');
+  bestEl.textContent = window.Hub.getBest('memory');
+  winText.textContent = `Bạn hoàn thành trong ${moves} lượt.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
+  winModal.classList.add('open');
+}
+
+document.getElementById('diffPick').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#diffPick button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  rows = +b.dataset.rows; cols = +b.dataset.cols;
+  setup();
+});
+
+document.getElementById('restart').addEventListener('click', setup);
+document.getElementById('playAgain').addEventListener('click', () => { winModal.classList.remove('open'); setup(); });
+
+setup();
+</script>
+</body>
+</html>
