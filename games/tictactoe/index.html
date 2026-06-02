@@ -34,6 +34,7 @@
   </div>
 </main>
 
+<script src="../../js/sfx.js"></script>
 <script src="../../js/main.js"></script>
 <script>
 const board = document.getElementById('board');
@@ -85,8 +86,8 @@ function highlight(line) {
 
 function endRound(winner, line) {
   gameOver = true;
-  if (winner) { scores[winner]++; highlight(line); }
-  else scores.D++;
+  if (winner) { scores[winner]++; highlight(line); window.SFX && window.SFX.win(); }
+  else { scores.D++; window.SFX && window.SFX.gameover(); }
   xScoreEl.textContent = scores.X;
   oScoreEl.textContent = scores.O;
   dScoreEl.textContent = scores.D;
@@ -95,6 +96,7 @@ function endRound(winner, line) {
 function play(i) {
   if (gameOver || cells[i]) return;
   cells[i] = current;
+  window.SFX && window.SFX.pop();
   render();
   const w = checkWin(cells, current);
   if (w) { endRound(current, w); return; }

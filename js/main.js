@@ -54,6 +54,7 @@
     gate.hidden = true;
     hub.hidden = false;
     renderBests();
+    if (window.SFX) window.SFX.start();
   };
 
   const showGate = () => {
@@ -71,6 +72,7 @@
     errorEl.hidden = false;
     gate.classList.add('shake');
     setTimeout(() => gate.classList.remove('shake'), 400);
+    if (window.SFX) window.SFX.wrong();
   };
 
   const tryCode = () => {
@@ -90,6 +92,7 @@
       const digit = e.target.value.replace(/\D/g, '').slice(-1);
       e.target.value = digit;
       errorEl.hidden = true;
+      if (digit && window.SFX) window.SFX.click();
       if (digit && idx < inputs.length - 1) {
         inputs[idx + 1].focus();
       }

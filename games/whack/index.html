@@ -47,6 +47,7 @@
   </div>
 </div>
 
+<script src="../../js/sfx.js"></script>
 <script src="../../js/main.js"></script>
 <script>
 const board = document.getElementById('board');
@@ -186,12 +187,16 @@ function handleHit(idx, el, critter, hole) {
     board.classList.add('bad');
     setTimeout(() => board.classList.remove('bad'), 350);
     showFloat(hole, delta + '', 'minus');
+    window.SFX && window.SFX.wrong();
   } else {
     const sign = delta >= 0 ? '+' : '';
     showFloat(hole, sign + delta, 'plus');
     if (critter.combo) {
       comboUntil = performance.now() + 5000;
       updateComboBadge();
+      window.SFX && window.SFX.match();
+    } else {
+      window.SFX && window.SFX.whack();
     }
   }
 
@@ -237,6 +242,7 @@ function end() {
   running = false;
   clearTimeout(spawnTimer);
   clearInterval(countdownTimer);
+  window.SFX && window.SFX.gameover();
   // hide any visible critters
   document.querySelectorAll('.whack-critter').forEach((el) => el.classList.remove('up'));
   const improved = window.Hub.saveBest('whack', score, 'high');
@@ -249,12 +255,15 @@ function runCountdown(then) {
   overlay.hidden = false;
   let n = 3;
   overlay.innerHTML = `<div class="whack-countdown">${n}</div>`;
+  window.SFX && window.SFX.tick();
   const id = setInterval(() => {
     n -= 1;
     if (n > 0) {
       overlay.innerHTML = `<div class="whack-countdown">${n}</div>`;
+      window.SFX && window.SFX.tick();
     } else if (n === 0) {
       overlay.innerHTML = `<div class="whack-countdown">Đi!</div>`;
+      window.SFX && window.SFX.start();
     } else {
       clearInterval(id);
       then();

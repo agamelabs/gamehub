@@ -45,6 +45,7 @@
   </div>
 </div>
 
+<script src="../../js/sfx.js"></script>
 <script src="../../js/main.js"></script>
 <script>
 const N = 4;
@@ -123,6 +124,7 @@ function move(dir) {
   if (res.moved) {
     grid = out;
     score += res.gained;
+    if (window.SFX) { res.gained > 0 ? window.SFX.merge() : window.SFX.move(); }
     addRandom();
     render();
     if (isOver()) gameOver();
@@ -139,6 +141,7 @@ function isOver() {
 }
 
 function gameOver() {
+  window.SFX && window.SFX.gameover();
   const improved = window.Hub.saveBest('2048', score, 'high');
   bestEl.textContent = window.Hub.getBest('2048');
   const max = Math.max(...grid.flat());

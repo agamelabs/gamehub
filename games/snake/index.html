@@ -51,6 +51,7 @@
   </div>
 </div>
 
+<script src="../../js/sfx.js"></script>
 <script src="../../js/main.js"></script>
 <script>
 const canvas = document.getElementById('snakeCanvas');
@@ -120,6 +121,7 @@ function step() {
   snake.unshift(head);
   if (head.x === food.x && head.y === food.y) {
     score++; scoreEl.textContent = score;
+    window.SFX && window.SFX.eat();
     placeFood();
   } else {
     snake.pop();
@@ -129,6 +131,7 @@ function step() {
 
 function gameOver() {
   stop();
+  window.SFX && window.SFX.gameover();
   const improved = window.Hub.saveBest('snake', score, 'high');
   bestEl.textContent = window.Hub.getBest('snake');
   overText.textContent = `Bạn ăn được ${score} quả táo.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
@@ -137,6 +140,7 @@ function gameOver() {
 
 function start() {
   overModal.classList.remove('open');
+  window.SFX && window.SFX.start();
   reset();
   running = true;
   clearInterval(timer);
