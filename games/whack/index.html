@@ -74,8 +74,10 @@ let timeLeft = ROUND_SECONDS;
 let running = false;
 let spawnTimer = null;
 let countdownTimer = null;
+let countdownActive = false;
 let comboUntil = 0;
 const occupied = new Array(HOLES).fill(false);
+const pendingTimers = new Set();
 
 function syncBest() {
   const b = window.Hub.getBest('whack');
@@ -153,13 +155,19 @@ function spawn() {
   requestAnimationFrame(() => el.classList.add('up'));
 
   const stay = currentStayMs();
-  const hideAt = setTimeout(() => retract(idx, el), stay);
+  const hideAt = setTimeout(() => {
+    pendingTimers.delete(hideAt);
+    retract(idx, el);
+  }, stay);
+  pendingTimers.add(hideAt);
   el.dataset.timer = hideAt;
 
   const onTap = (e) => {
     e.preventDefault();
     if (el.classList.contains('hit')) return;
-    clearTimeout(Number(el.dataset.timer));
+    const tid = Number(el.dataset.timer);
+    clearTimeout(tid);
+    pendingTimers.delete(tid);
     handleHit(idx, el, critter, hole);
   };
   el.addEventListener('click', onTap);
@@ -179,16 +187,17 @@ function handleHit(idx, el, critter, hole) {
   el.classList.add('hit');
   const mult = (!critter.bad && comboActive()) ? 2 : 1;
   const delta = critter.points * mult;
+  const before = score;
   score = Math.max(0, score + delta);
+  const actual = score - before;
   scoreEl.textContent = score;
 
   if (critter.bad) {
     board.classList.add('bad');
     setTimeout(() => board.classList.remove('bad'), 350);
-    showFloat(hole, delta + '', 'minus');
+    if (actual < 0) showFloat(hole, String(actual), 'minus');
   } else {
-    const sign = delta >= 0 ? '+' : '';
-    showFloat(hole, sign + delta, 'plus');
+    showFloat(hole, '+' + actual, 'plus');
     if (critter.combo) {
       comboUntil = performance.now() + 5000;
       updateComboBadge();
@@ -237,15 +246,18 @@ function end() {
   running = false;
   clearTimeout(spawnTimer);
   clearInterval(countdownTimer);
-  // hide any visible critters
+  pendingTimers.forEach((t) => clearTimeout(t));
+  pendingTimers.clear();
   document.querySelectorAll('.whack-critter').forEach((el) => el.classList.remove('up'));
-  const improved = window.Hub.saveBest('whack', score, 'high');
+  const improved = score > 0 ? window.Hub.saveBest('whack', score, 'high') : false;
   syncBest();
   overText.textContent = `Bạn được ${score} điểm.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
   overModal.classList.add('open');
 }
 
 function runCountdown(then) {
+  if (countdownActive) return;
+  countdownActive = true;
   overlay.hidden = false;
   let n = 3;
   overlay.innerHTML = `<div class="whack-countdown">${n}</div>`;
@@ -257,9 +269,10 @@ function runCountdown(then) {
       overlay.innerHTML = `<div class="whack-countdown">Đi!</div>`;
     } else {
       clearInterval(id);
+      countdownActive = false;
       then();
     }
-  }, 700);
+  }, 450);
 }
 
 document.getElementById('startBtn').addEventListener('click', () => {
