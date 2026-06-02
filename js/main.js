@@ -1,28 +1,21 @@
 // Shared utilities for the GameHub
 (function () {
-  const PLAYERS = {
-    minhan:    { name: 'Minh An',     avatar: '🦊', age: 6 },
-    quangminh: { name: 'Quang Minh',  avatar: '🐯', age: 13 },
-  };
-
-  const STORAGE_PLAYER = 'gh.player';
-  const STORAGE_BEST_PREFIX = 'gh.best.';
+  const CODE = '040210';
+  const STORAGE_UNLOCK = 'gh.unlock';
+  const STORAGE_BEST_PREFIX = 'gh.best.family.';
 
   const Hub = {
-    getPlayer() {
-      const id = localStorage.getItem(STORAGE_PLAYER);
-      return id && PLAYERS[id] ? { id, ...PLAYERS[id] } : null;
+    isUnlocked() {
+      return localStorage.getItem(STORAGE_UNLOCK) === CODE;
     },
-    setPlayer(id) {
-      if (!PLAYERS[id]) return;
-      localStorage.setItem(STORAGE_PLAYER, id);
+    unlock() {
+      localStorage.setItem(STORAGE_UNLOCK, CODE);
     },
-    clearPlayer() {
-      localStorage.removeItem(STORAGE_PLAYER);
+    lock() {
+      localStorage.removeItem(STORAGE_UNLOCK);
     },
     bestKey(game) {
-      const id = localStorage.getItem(STORAGE_PLAYER) || 'guest';
-      return STORAGE_BEST_PREFIX + id + '.' + game;
+      return STORAGE_BEST_PREFIX + game;
     },
     getBest(game) {
       const v = localStorage.getItem(this.bestKey(game));
@@ -39,41 +32,101 @@
 
   window.Hub = Hub;
 
-  // Home-page wiring
-  const picker = document.getElementById('playerPicker');
+  const gate = document.getElementById('codeGate');
   const hub = document.getElementById('hub');
-  if (picker && hub) {
-    const wName = document.getElementById('welcomeName');
-    const wAv = document.getElementById('welcomeAvatar');
+  if (!gate || !hub) return;
 
-    const renderBests = () => {
-      document.querySelectorAll('.best[data-game]').forEach((el) => {
-        const v = Hub.getBest(el.dataset.game);
-        el.textContent = v == null ? '—' : v;
-      });
-    };
+  const inputs = Array.from(document.querySelectorAll('#codeInputs .code-input'));
+  const errorEl = document.getElementById('codeError');
 
-    const showHub = (id) => {
-      const p = PLAYERS[id];
-      Hub.setPlayer(id);
-      wName.textContent = p.name;
-      wAv.textContent = p.avatar;
-      picker.hidden = true;
-      hub.hidden = false;
-      renderBests();
-    };
+  const renderBests = () => {
+    document.querySelectorAll('.best[data-game]').forEach((el) => {
+      const v = Hub.getBest(el.dataset.game);
+      el.textContent = v == null ? '—' : v;
+    });
+  };
 
-    picker.querySelectorAll('.player-card').forEach((b) => {
-      b.addEventListener('click', () => showHub(b.dataset.player));
+  const showHub = () => {
+    Hub.unlock();
+    gate.hidden = true;
+    hub.hidden = false;
+    renderBests();
+  };
+
+  const showGate = () => {
+    Hub.lock();
+    hub.hidden = true;
+    gate.hidden = false;
+    inputs.forEach((i) => { i.value = ''; });
+    errorEl.hidden = true;
+    setTimeout(() => inputs[0]?.focus(), 50);
+  };
+
+  const readCode = () => inputs.map((i) => i.value).join('');
+
+  const flashError = () => {
+    errorEl.hidden = false;
+    gate.classList.add('shake');
+    setTimeout(() => gate.classList.remove('shake'), 400);
+  };
+
+  const tryCode = () => {
+    const code = readCode();
+    if (code.length < 6) return;
+    if (code === CODE) {
+      showHub();
+    } else {
+      flashError();
+      inputs.forEach((i) => { i.value = ''; });
+      inputs[0].focus();
+    }
+  };
+
+  inputs.forEach((inp, idx) => {
+    inp.addEventListener('input', (e) => {
+      const digit = e.target.value.replace(/\D/g, '').slice(-1);
+      e.target.value = digit;
+      errorEl.hidden = true;
+      if (digit && idx < inputs.length - 1) {
+        inputs[idx + 1].focus();
+      }
+      if (idx === inputs.length - 1 && readCode().length === 6) {
+        tryCode();
+      }
     });
 
-    document.getElementById('switchBtn').addEventListener('click', () => {
-      Hub.clearPlayer();
-      picker.hidden = false;
-      hub.hidden = true;
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !inp.value && idx > 0) {
+        inputs[idx - 1].focus();
+        inputs[idx - 1].value = '';
+        e.preventDefault();
+      } else if (e.key === 'ArrowLeft' && idx > 0) {
+        inputs[idx - 1].focus();
+      } else if (e.key === 'ArrowRight' && idx < inputs.length - 1) {
+        inputs[idx + 1].focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        tryCode();
+      }
     });
 
-    const existing = Hub.getPlayer();
-    if (existing) showHub(existing.id);
+    inp.addEventListener('paste', (e) => {
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      const digits = text.replace(/\D/g, '').slice(0, inputs.length).split('');
+      if (!digits.length) return;
+      e.preventDefault();
+      digits.forEach((d, i) => { if (inputs[i]) inputs[i].value = d; });
+      const next = Math.min(digits.length, inputs.length - 1);
+      inputs[next].focus();
+      if (readCode().length === 6) tryCode();
+    });
+  });
+
+  document.getElementById('switchBtn').addEventListener('click', showGate);
+
+  if (Hub.isUnlocked()) {
+    showHub();
+  } else {
+    setTimeout(() => inputs[0]?.focus(), 100);
   }
 })();

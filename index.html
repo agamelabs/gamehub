@@ -10,30 +10,29 @@
 <body class="home">
 <header class="hero">
   <h1>🎮 GameHub</h1>
-  <p class="tagline">Hè vui cùng <strong>Minh An</strong> & <strong>Quang Minh</strong></p>
+  <p class="tagline">Hè vui vẻ nha cả nhà 🌞</p>
 </header>
 
-<section class="player-picker" id="playerPicker">
-  <h2>Bạn là ai?</h2>
-  <div class="players">
-    <button class="player-card" data-player="minhan">
-      <span class="avatar">🦊</span>
-      <span class="name">Minh An</span>
-      <span class="age">6 tuổi</span>
-    </button>
-    <button class="player-card" data-player="quangminh">
-      <span class="avatar">🐯</span>
-      <span class="name">Quang Minh</span>
-      <span class="age">13 tuổi</span>
-    </button>
-  </div>
+<section class="code-gate" id="codeGate">
+  <h2>🔒 Nhập mã để chơi</h2>
+  <p class="gate-hint">Hỏi bố mẹ mã 6 số nha!</p>
+  <form class="code-form" id="codeForm" autocomplete="off">
+    <div class="code-inputs" id="codeInputs">
+      <input class="code-input" type="tel" inputmode="numeric" maxlength="1" aria-label="Số 1" />
+      <input class="code-input" type="tel" inputmode="numeric" maxlength="1" aria-label="Số 2" />
+      <input class="code-input" type="tel" inputmode="numeric" maxlength="1" aria-label="Số 3" />
+      <input class="code-input" type="tel" inputmode="numeric" maxlength="1" aria-label="Số 4" />
+      <input class="code-input" type="tel" inputmode="numeric" maxlength="1" aria-label="Số 5" />
+      <input class="code-input" type="tel" inputmode="numeric" maxlength="1" aria-label="Số 6" />
+    </div>
+    <p class="code-error" id="codeError" hidden>Sai mã rồi, thử lại nha!</p>
+  </form>
 </section>
 
 <section class="hub" id="hub" hidden>
   <div class="welcome">
-    <span id="welcomeAvatar">🦊</span>
-    <h2>Chào <span id="welcomeName">bạn</span>! Chọn game nha</h2>
-    <button class="switch-btn" id="switchBtn">Đổi người chơi</button>
+    <h2>Chọn game đi nào 🎯</h2>
+    <button class="switch-btn" id="switchBtn">🔒 Khoá lại</button>
   </div>
 
   <div class="game-grid">

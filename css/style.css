@@ -55,38 +55,61 @@ a { color: inherit; text-decoration: none; }
   margin: 6px 0 0;
 }
 
-.player-picker {
-  max-width: 760px;
+.code-gate {
+  max-width: 480px;
   margin: 30px auto 60px;
-  padding: 0 20px;
+  padding: 30px 24px;
   text-align: center;
 }
-.player-picker h2 {
+.code-gate h2 {
   font-size: 28px;
-  margin: 10px 0 24px;
+  margin: 10px 0 6px;
 }
-.players {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 22px;
+.gate-hint {
+  color: var(--ink-soft);
+  margin: 0 0 24px;
 }
-.player-card {
-  background: var(--card);
-  border: none;
-  border-radius: var(--radius);
-  padding: 30px 18px;
-  box-shadow: var(--shadow);
-  transition: transform .2s ease, box-shadow .2s ease;
+.code-form { display: block; }
+.code-inputs {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  font-family: inherit;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.player-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
-.player-card .avatar { font-size: 64px; }
-.player-card .name { font-size: 24px; font-weight: 700; color: var(--ink); }
-.player-card .age { font-size: 14px; color: var(--ink-soft); background: #eef2ff; padding: 4px 10px; border-radius: 999px; }
+.code-input {
+  width: 52px;
+  height: 64px;
+  font-size: 32px;
+  font-weight: 800;
+  text-align: center;
+  border: 2px solid #e2e6f0;
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font-family: inherit;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.code-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.code-error {
+  color: #e23b5a;
+  font-weight: 700;
+  margin: 18px 0 0;
+}
+@keyframes gateShake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-8px); }
+  40%, 60% { transform: translateX(8px); }
+}
+.code-gate.shake { animation: gateShake .4s ease; }
+@media (max-width: 420px) {
+  .code-input { width: 42px; height: 56px; font-size: 26px; }
+}
 
 /* Hub */
 .welcome {
