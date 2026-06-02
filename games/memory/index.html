@@ -44,6 +44,7 @@
   </div>
 </div>
 
+<script src="../../js/sfx.js"></script>
 <script src="../../js/main.js"></script>
 <script>
 const EMOJIS = ['🐶','🐱','🐰','🐼','🐸','🐵','🦁','🐯','🐨','🐮','🐷','🐔','🦄','🐙','🐝','🦋','🐢','🐳'];
@@ -97,6 +98,7 @@ function flip(card) {
   if (lock) return;
   if (card.classList.contains('flipped') || card.classList.contains('matched')) return;
   card.classList.add('flipped');
+  window.SFX && window.SFX.flip();
   if (!first) { first = card; return; }
   moves++; movesEl.textContent = moves;
   const a = deck[first.dataset.idx];
@@ -106,9 +108,11 @@ function flip(card) {
     card.classList.add('matched');
     first = null;
     pairs++; pairsEl.textContent = pairs;
-    if (pairs === totalPairs) setTimeout(win, 350);
+    if (pairs === totalPairs) { setTimeout(win, 350); }
+    else { window.SFX && window.SFX.match(); }
   } else {
     lock = true;
+    window.SFX && window.SFX.wrong();
     const f = first;
     setTimeout(() => {
       f.classList.remove('flipped');
@@ -119,6 +123,7 @@ function flip(card) {
 }
 
 function win() {
+  window.SFX && window.SFX.win();
   const improved = window.Hub.saveBest('memory', moves, 'low');
   bestEl.textContent = window.Hub.getBest('memory');
   winText.textContent = `Bạn hoàn thành trong ${moves} lượt.` + (improved ? ' 🏆 Kỷ lục mới!' : '');

@@ -85,6 +85,12 @@
   </footer>
 </section>
 
+<script src="js/sfx.js"></script>
 <script src="js/main.js"></script>
+<script>
+  document.querySelectorAll('.game-card').forEach((card) => {
+    card.addEventListener('click', () => window.SFX && window.SFX.pop());
+  });
+</script>
 </body>
 </html>

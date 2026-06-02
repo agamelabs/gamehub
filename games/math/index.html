@@ -48,6 +48,7 @@
   </div>
 </div>
 
+<script src="../../js/sfx.js"></script>
 <script src="../../js/main.js"></script>
 <script>
 const qEl = document.getElementById('question');
@@ -127,10 +128,12 @@ function choose(btn, v) {
     score += 10 + streak * 2;
     streak++;
     timeLeft = Math.min(timeLeft + 1, 60);
+    window.SFX && window.SFX.correct();
   } else {
     btn.classList.add('wrong');
     [...optsEl.children].forEach(c => { if (Number(c.textContent) === ans) c.classList.add('right'); });
     streak = 0;
+    window.SFX && window.SFX.wrong();
   }
   scoreEl.textContent = score;
   streakEl.textContent = streak;
@@ -144,6 +147,7 @@ function next() {
 
 function start() {
   overModal.classList.remove('open');
+  window.SFX && window.SFX.start();
   score = 0; qn = 0; streak = 0; timeLeft = 30;
   scoreEl.textContent = 0; streakEl.textContent = 0; qnEl.textContent = 0; timeEl.textContent = timeLeft;
   running = true;
@@ -155,12 +159,14 @@ function start() {
 function tick() {
   timeLeft--;
   timeEl.textContent = timeLeft;
+  if (timeLeft > 0 && timeLeft <= 5 && window.SFX) window.SFX.tick();
   if (timeLeft <= 0) end();
 }
 
 function end() {
   running = false;
   clearInterval(timer);
+  window.SFX && window.SFX.gameover();
   const improved = window.Hub.saveBest('math', score, 'high');
   bestEl.textContent = window.Hub.getBest('math');
   overText.textContent = `Bạn đạt ${score} điểm với ${qn} câu hỏi.` + (improved ? ' 🏆 Kỷ lục mới!' : '');

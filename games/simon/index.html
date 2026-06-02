@@ -44,6 +44,7 @@
   </div>
 </div>
 
+<script src="../../js/sfx.js"></script>
 <script src="../../js/main.js"></script>
 <script>
 const COLORS = ['green','red','yellow','blue'];
@@ -72,6 +73,7 @@ function syncWho() {
 }
 
 function tone(color) {
+  if (window.SFX && !window.SFX.enabled) return;
   try {
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
     const o = audio.createOscillator();
@@ -121,6 +123,7 @@ function start() {
 
 function gameOver() {
   playing = false; canTouch = false;
+  window.SFX && window.SFX.gameover();
   const score = seq.length - 1;
   const improved = window.Hub.saveBest('simon', score, 'high');
   bestEl.textContent = window.Hub.getBest('simon');
@@ -140,6 +143,7 @@ board.addEventListener('click', (e) => {
   if (input.length === seq.length) {
     canTouch = false;
     status.textContent = '👏 Tuyệt vời!';
+    window.SFX && window.SFX.correct();
     setTimeout(nextRound, 800);
   }
 });
