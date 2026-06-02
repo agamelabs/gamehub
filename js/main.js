@@ -14,6 +14,9 @@
     lock() {
       localStorage.removeItem(STORAGE_UNLOCK);
     },
+    getPlayer() {
+      return null;
+    },
     bestKey(game) {
       return STORAGE_BEST_PREFIX + game;
     },
