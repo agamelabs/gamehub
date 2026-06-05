@@ -1,6 +1,8 @@
 // GameHub service worker — caches the whole app so it works offline.
-// Bump CACHE whenever assets change to roll the update out to installed apps.
-const CACHE = 'gamehub-v1';
+// Assets use stale-while-revalidate, so content auto-updates on the next
+// visit without needing a manual CACHE bump. (Bumping it still forces an
+// immediate full refresh if you ever want one.)
+const CACHE = 'gamehub-v2';
 
 // Paths are relative to the service worker's location (the site root),
 // so this works both at a domain root and under /gamehub/ on GitHub Pages.
@@ -64,10 +66,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for static assets (css/js/icons/manifest).
+  // Stale-while-revalidate for static assets (css/js/icons/manifest):
+  // serve the cached copy instantly, and refresh the cache in the background
+  // so the next visit gets the new version automatically.
   event.respondWith(
-    caches.match(req).then((cached) =>
-      cached || fetch(req).then((res) => { cachePut(req, res.clone()); return res; })
-    )
+    caches.match(req).then((cached) => {
+      const network = fetch(req)
+        .then((res) => { cachePut(req, res.clone()); return res; })
+        .catch(() => cached);
+      return cached || network;
+    })
   );
 });
