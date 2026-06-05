@@ -199,7 +199,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* Game page chrome */
-.game-page { display: flex; flex-direction: column; min-height: 100vh; }
+.game-page { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 .game-topbar {
   display: flex;
   align-items: center;
@@ -324,9 +324,12 @@ a { color: inherit; text-decoration: none; }
   background: #0c1224;
   border-radius: 18px;
   display: block;
-  max-width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 70vh; /* keep room for the controls below */
   box-shadow: var(--shadow);
+  touch-action: none; /* let swipes steer instead of scrolling the page */
 }
 .touch-pad {
   margin-top: 14px;
@@ -343,7 +346,12 @@ a { color: inherit; text-decoration: none; }
   font-size: 26px;
   box-shadow: var(--shadow);
   font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation; /* instant taps, no double-tap zoom */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
+.touch-pad button:active { transform: scale(0.92); background: #f3f4fb; }
 .touch-pad .up { grid-column: 2; grid-row: 1; }
 .touch-pad .left { grid-column: 1; grid-row: 2; }
 .touch-pad .right { grid-column: 3; grid-row: 2; }
@@ -480,6 +488,13 @@ a { color: inherit; text-decoration: none; }
   .simon-board { grid-template-columns: repeat(2, 120px); grid-template-rows: repeat(2, 120px); }
   .g2048-wrap { grid-template-columns: repeat(4, 64px); grid-template-rows: repeat(4, 64px); }
   .g2048-cell { font-size: 24px; }
+
+  /* Snake: shrink the board so the d-pad stays fully on screen */
+  .game-main { padding: 14px 12px 88px; }
+  #snakeCanvas { max-height: 40vh; margin-top: 8px !important; }
+  .touch-pad { grid-template-columns: repeat(3, 62px); grid-template-rows: repeat(3, 62px); gap: 8px; margin-top: 10px; }
+  .touch-pad button { font-size: 26px; }
+  .snake-hint { display: none; }
 }
 
 /* Whack */

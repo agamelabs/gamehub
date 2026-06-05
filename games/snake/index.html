@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Rắn Săn Mồi · GameHub</title>
 <link rel="stylesheet" href="../../css/style.css" />
 </head>
@@ -36,7 +36,7 @@
     <button class="btn" id="start">Bắt đầu</button>
     <button class="btn ghost" id="pause">Tạm dừng</button>
   </div>
-  <p style="color:var(--ink-soft); margin-top:10px;">Dùng phím mũi tên / WASD hoặc các nút bên trên.</p>
+  <p class="snake-hint" style="color:var(--ink-soft); margin-top:10px;">Vuốt trên màn hình, dùng các nút, hoặc phím mũi tên / WASD.</p>
 </main>
 
 <div class="modal" id="overModal">
@@ -171,8 +171,28 @@ window.addEventListener('keydown', (e) => {
 });
 
 document.querySelectorAll('.touch-pad button').forEach(b => {
+  // touchstart responds instantly (no 300ms delay) and preventDefault stops
+  // the tap from scrolling/zooming the page on mobile.
+  b.addEventListener('touchstart', (e) => { e.preventDefault(); setDir(b.dataset.dir); }, { passive: false });
   b.addEventListener('click', () => setDir(b.dataset.dir));
 });
+
+// Swipe anywhere on the board to steer — the natural control on a phone.
+let swipeStart = null;
+canvas.addEventListener('touchstart', (e) => {
+  swipeStart = e.touches[0];
+}, { passive: true });
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchend', (e) => {
+  if (!swipeStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeStart.clientX;
+  const dy = t.clientY - swipeStart.clientY;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) { swipeStart = null; return; }
+  if (Math.abs(dx) > Math.abs(dy)) setDir(dx > 0 ? 'right' : 'left');
+  else setDir(dy > 0 ? 'down' : 'up');
+  swipeStart = null;
+}, { passive: false });
 
 document.getElementById('speedPick').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
