@@ -159,7 +159,18 @@
   // three-way spread — and higher levels fire faster too. Collect ⚡ power-ups.
   let weaponLvl = 1;
   let fireClock = 0;
+  let lvlUpAt = -99;          // time of the last upgrade, for the burst effect
   const BULLET_VZ = 20;       // how fast a shot flies away from the camera
+
+  // Per-level ship looks — the craft visibly evolves as the gun upgrades.
+  const SHIP_STYLE = {
+    1: { body: ['#cfe6ff', '#ffffff', '#a9c8ee'], fin: '#ff6b9a', win: '#4ec3ff',
+         aura: '150,210,255', wing: 0,   flames: 1, core: null },
+    2: { body: ['#b8f3e6', '#ffffff', '#4fc9b2'], fin: '#3fb0ff', win: '#7dffea',
+         aura: '90,255,220',  wing: 0.7, flames: 2, core: '#7dffea' },
+    3: { body: ['#ffe6a0', '#fff9ea', '#ffab3d'], fin: '#ff7a2f', win: '#fff2b0',
+         aura: '255,205,90',  wing: 1.1, flames: 2, core: '#fff2b0' },
+  };
 
   // Combo multiplier — chain pickups/kills within the window to score more.
   let combo = 0, comboUntil = 0;
@@ -434,37 +445,124 @@
     ctx.restore();
   }
 
-  function drawShip() {
-    const p = project(ship.x, ship.y, SHIP_Z);
-    const size = p.s * 0.42;
+  // Glowing aura around the ship — grows richer with the weapon level, and
+  // flares with a shockwave right after an upgrade.
+  function drawAura(cx0, cy0, size, lvl, st) {
+    const pulse = 0.5 + 0.5 * Math.sin(elapsed * 4);
+    const auraR = size * (1.7 + lvl * 0.4 + pulse * 0.3);
     ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(ship.bank * 0.5);
-    // thruster flame (flickers), drawn behind the body
-    const flame = size * (1.1 + Math.sin(elapsed * 30) * 0.25);
+    // soft radial halo
+    const g = ctx.createRadialGradient(cx0, cy0, size * 0.3, cx0, cy0, auraR);
+    g.addColorStop(0, `rgba(${st.aura},${0.16 + lvl * 0.06})`);
+    g.addColorStop(0.55, `rgba(${st.aura},${0.06 + lvl * 0.03})`);
+    g.addColorStop(1, `rgba(${st.aura},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx0, cy0, auraR, 0, 7); ctx.fill();
+
+    // rotating energy rings (level 2+)
+    if (lvl >= 2) {
+      ctx.lineWidth = Math.max(1, size * 0.06);
+      for (let k = 0; k < lvl; k++) {
+        const rot = elapsed * (0.8 + k * 0.5) * (k % 2 ? -1 : 1);
+        const rr = auraR * (0.72 - k * 0.14);
+        ctx.strokeStyle = `rgba(${st.aura},${0.5 - k * 0.12})`;
+        ctx.save(); ctx.translate(cx0, cy0); ctx.rotate(rot);
+        ctx.beginPath(); ctx.ellipse(0, 0, rr, rr * 0.4, 0, 0, 7); ctx.stroke();
+        ctx.restore();
+      }
+    }
+    // orbiting sparks (level 3)
+    if (lvl >= 3) {
+      for (let k = 0; k < 6; k++) {
+        const a = elapsed * 2 + k * (Math.PI / 3);
+        const rr = auraR * 0.7;
+        const sx = cx0 + Math.cos(a) * rr, sy = cy0 + Math.sin(a) * rr * 0.42;
+        ctx.fillStyle = 'rgba(255,244,190,0.95)';
+        ctx.shadowColor = '#fff2b0'; ctx.shadowBlur = size * 0.3;
+        ctx.beginPath(); ctx.arc(sx, sy, Math.max(1, size * 0.09), 0, 7); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+
+    // level-up shockwave
+    const f = (elapsed - lvlUpAt) / 0.6;
+    if (f >= 0 && f <= 1) {
+      ctx.globalAlpha = 1 - f;
+      ctx.strokeStyle = `rgba(${st.aura},0.9)`;
+      ctx.lineWidth = size * 0.18 * (1 - f);
+      ctx.beginPath(); ctx.arc(cx0, cy0, size * (1 + f * 3.2), 0, 7); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  function drawFlame(ox, size, scale) {
+    const flame = size * scale * (1.1 + Math.sin(elapsed * 30 + ox) * 0.25);
     const fg = ctx.createLinearGradient(0, size * 0.5, 0, size * 0.5 + flame);
     fg.addColorStop(0, '#ffe27a');
     fg.addColorStop(0.5, '#ff9a3c');
     fg.addColorStop(1, 'rgba(255,90,40,0)');
     ctx.fillStyle = fg;
     ctx.beginPath();
-    ctx.moveTo(-size * 0.32, size * 0.5);
-    ctx.lineTo(0, size * 0.5 + flame);
-    ctx.lineTo(size * 0.32, size * 0.5);
+    ctx.moveTo(ox - size * 0.22 * scale, size * 0.5);
+    ctx.lineTo(ox, size * 0.5 + flame);
+    ctx.lineTo(ox + size * 0.22 * scale, size * 0.5);
     ctx.closePath(); ctx.fill();
+  }
+
+  function drawShip() {
+    const lvl = Math.min(3, weaponLvl);
+    const st = SHIP_STYLE[lvl];
+    const p = project(ship.x, ship.y, SHIP_Z);
+    const size = p.s * 0.42 * (1 + (lvl - 1) * 0.07);
+
+    // aura sits behind the ship, in un-rotated screen space
+    drawAura(p.x, p.y, size, lvl, st);
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(ship.bank * 0.5);
+
+    // engines
+    if (st.flames >= 2) { drawFlame(-size * 0.24, size, 0.85); drawFlame(size * 0.24, size, 0.85); }
+    else drawFlame(0, size, 1);
+
+    // swept wings (level 2+), drawn behind the fins/body
+    if (st.wing > 0) {
+      const w = st.wing;
+      const wg = ctx.createLinearGradient(-size, 0, size, 0);
+      wg.addColorStop(0, st.body[2]); wg.addColorStop(0.5, st.body[1]); wg.addColorStop(1, st.body[2]);
+      ctx.fillStyle = wg;
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.32, size * 0.0);
+      ctx.lineTo(-size * (0.55 + 0.6 * w), size * 0.62);
+      ctx.lineTo(-size * (0.15 + 0.2 * w), size * 0.5);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(size * 0.32, size * 0.0);
+      ctx.lineTo(size * (0.55 + 0.6 * w), size * 0.62);
+      ctx.lineTo(size * (0.15 + 0.2 * w), size * 0.5);
+      ctx.closePath(); ctx.fill();
+    }
+
     // fins
-    ctx.fillStyle = '#ff6b9a';
+    ctx.fillStyle = st.fin;
     ctx.beginPath();
     ctx.moveTo(-size * 0.4, size * 0.5); ctx.lineTo(-size * 0.7, size * 0.7);
     ctx.lineTo(-size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
     ctx.beginPath();
     ctx.moveTo(size * 0.4, size * 0.5); ctx.lineTo(size * 0.7, size * 0.7);
     ctx.lineTo(size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
-    // body
+
+    // underside shadow for a rounder, 3D body
+    ctx.fillStyle = 'rgba(20,30,60,0.25)';
+    ctx.beginPath(); ctx.ellipse(0, size * 0.3, size * 0.42, size * 0.55, 0, 0, 7); ctx.fill();
+
+    // body with a left-light / right-shade gradient
     const bg = ctx.createLinearGradient(-size * 0.5, 0, size * 0.5, 0);
-    bg.addColorStop(0, '#cfe6ff');
-    bg.addColorStop(0.5, '#ffffff');
-    bg.addColorStop(1, '#a9c8ee');
+    bg.addColorStop(0, st.body[0]);
+    bg.addColorStop(0.45, st.body[1]);
+    bg.addColorStop(1, st.body[2]);
     ctx.fillStyle = bg;
     ctx.beginPath();
     ctx.moveTo(0, -size * 0.9);
@@ -472,18 +570,37 @@
     ctx.lineTo(-size * 0.4, size * 0.55);
     ctx.quadraticCurveTo(-size * 0.5, -size * 0.1, 0, -size * 0.9);
     ctx.closePath(); ctx.fill();
-    // window
-    ctx.fillStyle = '#4ec3ff';
+
+    // glossy top highlight (3D sheen)
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.06, -size * 0.85);
+    ctx.quadraticCurveTo(-size * 0.28, -size * 0.2, -size * 0.14, size * 0.3);
+    ctx.quadraticCurveTo(-size * 0.02, -size * 0.2, -size * 0.06, -size * 0.85);
+    ctx.closePath(); ctx.fill();
+
+    // energy core (level 2+): a pulsing glow set into the hull
+    if (st.core) {
+      const cr = size * (0.16 + 0.03 * Math.sin(elapsed * 8));
+      ctx.shadowColor = st.core; ctx.shadowBlur = size * 0.5;
+      ctx.fillStyle = st.core;
+      ctx.beginPath(); ctx.arc(0, size * 0.18, cr, 0, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // window / cockpit
+    ctx.fillStyle = st.win;
     ctx.beginPath(); ctx.arc(0, -size * 0.15, size * 0.24, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.beginPath(); ctx.arc(-size * 0.08, -size * 0.22, size * 0.09, 0, 7); ctx.fill();
+
     // active shield bubble
     if (shield) {
       ctx.rotate(-ship.bank * 0.5);
       ctx.strokeStyle = `hsla(205, 100%, 70%, ${0.55 + 0.25 * Math.sin(elapsed * 6)})`;
       ctx.lineWidth = size * 0.12;
       ctx.shadowColor = '#7fd0ff'; ctx.shadowBlur = size * 0.6;
-      ctx.beginPath(); ctx.arc(0, 0, size * 1.35, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, size * 1.4, 0, 7); ctx.stroke();
     }
     ctx.restore();
   }
@@ -703,8 +820,10 @@
         if (o.kind === 'power' && d < 1.05) {
           if (weaponLvl < 3) {
             weaponLvl++;
-            pushPopup(o.x, o.y, o.z, 'SÚNG Lv ' + weaponLvl + '!', '#8affff', 1.2);
-            window.SFX && window.SFX.match && window.SFX.match();
+            lvlUpAt = elapsed;                   // fire the ship upgrade burst
+            burst(ship.x, ship.y, SHIP_Z, 18, '#bff6ff', 3.5);
+            pushPopup(ship.x, ship.y - 0.8, SHIP_Z, 'NÂNG CẤP! ✦', '#8affff', 1.4);
+            window.SFX && window.SFX.win && window.SFX.win();
           } else {
             addScore(15 * comboMult(), o.x, o.y, o.z, '#8affff');
             window.SFX && window.SFX.eat();
@@ -834,7 +953,7 @@
     score = 0; starCount = 0; lives = 3;
     speed = 7; elapsed = 0; spawnClock = 0; spawnGap = 0.7;
     shakeUntil = 0;
-    weaponLvl = 1; fireClock = 0;
+    weaponLvl = 1; fireClock = 0; lvlUpAt = -99;
     combo = 0; comboUntil = 0; shield = false;
     boss = null; bossClock = 0;
     ship.x = ship.tx = 0; ship.y = ship.ty = 1.0; ship.bank = 0;
