@@ -66,7 +66,7 @@
       <div>
         <div style="font-size:64px">🚀</div>
         <h2>Bay vào vũ trụ!</h2>
-        <p>Kéo để lái — tự bắn 🔫 phá thiên thạch ☄️!<br />⚡ nâng súng (Lv3 có drone hộ tống), 🛡️ khiên, 💥 NOVA quét sạch màn hình.<br />Combo cao vào chế độ 🔥 ON FIRE, hạ BOSS khổng lồ nha!</p>
+        <p>Kéo để lái — tự bắn 🔫 phá thiên thạch ☄️!<br />⚡ nâng súng (Lv3 có drone), 🛡️ khiên, 💥 NOVA quét màn hình.<br />Hạ BOSS để qua màn mới — mỗi màn một chủ đề, khó dần nha!</p>
         <button class="btn" id="startBtn">Bắt đầu</button>
       </div>
     </div>
@@ -181,11 +181,31 @@
   let combo = 0, comboUntil = 0;
   let shield = false;         // one-hit shield from a 🛡️ power-up
   let boss = null;            // giant asteroid boss, or null
-  let bossClock = 0;          // counts up to the next boss appearance
-  const BOSS_EVERY = 24;      // seconds between bosses
+  let bossClock = 0;          // counts up within a stage toward the boss
+  const STAGE_WAVE = 18;      // seconds of a wave before the stage's boss
+
+  // Stages ("màn"): each has its own theme (nebula colours, asteroid type,
+  // pace). Beat the stage boss to advance; the list cycles and ramps up.
+  let stageNum = 1;
+  let bannerText = '', bannerUntil = 0;
+  const STAGES = [
+    { name: 'Vành Đai Thiên Thạch', neb: [268, 210, 320, 190], rockHue: [18, 40], star: '#ffffff', speedMul: 1.00, spawnMul: 1.00 },
+    { name: 'Bão Băng',             neb: [190, 205, 225, 175], rockHue: [188, 210], star: '#d3efff', speedMul: 1.12, spawnMul: 1.15 },
+    { name: 'Vùng Lửa',             neb: [10, 32, 350, 24],    rockHue: [6, 30],   star: '#ffdcbe', speedMul: 1.22, spawnMul: 1.28 },
+    { name: 'Hư Không Tím',         neb: [280, 300, 255, 315], rockHue: [268, 302], star: '#e8d5ff', speedMul: 1.32, spawnMul: 1.40 },
+  ];
+  function stageTheme() { return STAGES[(stageNum - 1) % STAGES.length]; }
 
   function comboMult() { return 1 + Math.min(4, Math.floor(combo / 4)); }
   function bumpCombo() { combo++; comboUntil = elapsed + 2.6; }
+  function showBanner(text) { bannerText = text; bannerUntil = elapsed + 2.4; }
+
+  function advanceStage() {
+    stageNum++;
+    bossClock = 0;
+    seedNebula(stageTheme());
+    showBanner('MÀN ' + stageNum + ' · ' + stageTheme().name);
+  }
 
   function seedBackground() {
     bgStars.length = 0;
@@ -209,15 +229,18 @@
         ring: Math.random() < 0.5,
       });
     }
-    // deep glowing nebula clouds (screen-space, slow parallax drift)
+    seedNebula(stageTheme());
+  }
+
+  // (Re)seed the deep glowing nebula clouds using the current stage's palette.
+  function seedNebula(theme) {
     nebula.length = 0;
-    const nhues = [268, 200, 320, 175];
     for (let i = 0; i < 4; i++) {
       nebula.push({
         fx: 0.15 + Math.random() * 0.7,   // fraction of width
         fy: 0.1 + Math.random() * 0.8,    // fraction of height
         r: 0.35 + Math.random() * 0.35,   // fraction of min(W,H)
-        hue: nhues[i],
+        hue: theme.neb[i],
         drift: (Math.random() * 2 - 1) * 0.02,
         phase: i * 1.7,
       });
@@ -236,13 +259,14 @@
       z: FAR_Z,
       spin: Math.random() * Math.PI * 2,
       spinV: (Math.random() * 2 - 1) * 2.5,
-      hue: kind === 'star' ? 48 : 20 + Math.random() * 20,
+      hue: kind === 'star' ? 48
+         : stageTheme().rockHue[0] + Math.random() * (stageTheme().rockHue[1] - stageTheme().rockHue[0]),
       resolved: false,
     });
   }
 
   function spawnBoss() {
-    const hp = 8 + Math.floor(elapsed / 24) * 3;   // tougher each time
+    const hp = 8 + (stageNum - 1) * 3;             // tougher each stage
     boss = {
       x: 0, y: 0, z: FAR_Z, r: 1.5,
       hp, maxHp: hp, spin: 0, hitFlash: 0, sway: Math.random() * 6,
@@ -299,7 +323,7 @@
       burst(boss.x, boss.y, boss.z, 20, '#bff6ff', 5);
       if (boss.hp <= 0) {
         addScore(60 * comboMult(), boss.x, boss.y, boss.z, '#ffd54f');
-        boss = null; bossClock = 0;
+        boss = null; advanceStage();
       }
     }
     if (cleared) { bumpCombo(); addScore(cleared * 6, ship.x, ship.y - 0.6, SHIP_Z, '#bff6ff'); }
@@ -749,7 +773,7 @@
       if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) continue;
       const r = Math.max(0.4, p.s * s.w * 0.012);
       ctx.globalAlpha = Math.min(1, (FAR_Z - s.z) / FAR_Z + 0.25);
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = stageTheme().star;
       if (streak > 0) {
         // draw a line from the vanishing point outward through the star
         const dx = p.x - cx, dy = p.y - cy;
@@ -833,24 +857,38 @@
 
     // HUD (fixed, not affected by screen shake)
     ctx.save();
-    ctx.font = 'bold 14px ' + getComputedStyle(document.body).fontFamily;
+    const font = getComputedStyle(document.body).fontFamily;
+    ctx.font = 'bold 14px ' + font;
     ctx.textAlign = 'left';
     ctx.fillStyle = weaponLvl >= 3 ? '#ffd54f' : '#8affff';
     ctx.fillText('🔫 Lv ' + weaponLvl + (weaponLvl >= 3 ? ' MAX' : ''), 12, H - 12);
     if (shield) { ctx.fillStyle = '#7fd0ff'; ctx.fillText('🛡️', 92, H - 12); }
+    // stage indicator (top-left)
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText('Màn ' + stageNum, 12, 22);
     // combo banner
     if (elapsed < comboUntil && comboMult() > 1) {
       ctx.textAlign = 'center';
       ctx.fillStyle = comboMult() >= 4 ? '#ff6a3c' : '#ffbe3c';
-      ctx.font = 'bold 20px ' + getComputedStyle(document.body).fontFamily;
-      ctx.fillText((comboMult() >= 4 ? '🔥 ON FIRE  x' : 'COMBO x') + comboMult(), W / 2, 30);
+      ctx.font = 'bold 20px ' + font;
+      ctx.fillText((comboMult() >= 4 ? '🔥 ON FIRE  x' : 'COMBO x') + comboMult(), W / 2, 44);
     }
     // warp intro banner
     if (warp > 0) {
       ctx.textAlign = 'center';
       ctx.fillStyle = '#cfe6ff';
-      ctx.font = 'bold 22px ' + getComputedStyle(document.body).fontFamily;
+      ctx.font = 'bold 22px ' + font;
       ctx.fillText('WARP!', W / 2, H / 2);
+    }
+    // stage banner (on stage start / advance)
+    if (elapsed < bannerUntil) {
+      const f = 1 - (bannerUntil - elapsed) / 2.4;   // 0→1 over its life
+      ctx.textAlign = 'center';
+      ctx.globalAlpha = Math.min(1, (1 - f) * 3);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 24px ' + font;
+      ctx.fillText(bannerText, W / 2, H * 0.4);
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
@@ -888,6 +926,7 @@
     // hyperspace warp intro — stars streak past, gameplay hasn't begun yet
     if (warp > 0) {
       warp -= dt;
+      if (warp <= 0) showBanner('MÀN 1 · ' + STAGES[0].name);   // arrive at stage 1
       for (const s of bgStars) {
         s.z -= 42 * dt;
         if (s.z < 0.6) { s.z = FAR_Z; s.x = (Math.random() * 2 - 1) * 9; s.y = (Math.random() * 2 - 1) * 9; }
@@ -897,8 +936,9 @@
       return;
     }
 
-    speed = 7 + Math.min(elapsed * 0.25, 9);      // gently ramps toward 16
-    spawnGap = Math.max(0.32, 0.7 - elapsed * 0.006);
+    const theme = stageTheme();
+    speed = (7 + Math.min(elapsed * 0.25, 9)) * theme.speedMul;   // stage-scaled
+    spawnGap = Math.max(0.28, (0.7 - elapsed * 0.006) / theme.spawnMul);
     score += dt * 2;                               // small survival trickle
     scoreEl.textContent = Math.floor(score);
     if (elapsed > comboUntil) combo = 0;           // combo cools off
@@ -952,7 +992,7 @@
 
     // boss scheduling
     bossClock += dt;
-    if (!boss && bossClock >= BOSS_EVERY) { bossClock = 0; spawnBoss(); }
+    if (!boss && bossClock >= STAGE_WAVE) { bossClock = 0; spawnBoss(); }
 
     // auto-fire — faster at higher weapon levels
     fireClock += dt;
@@ -1083,7 +1123,7 @@
             x: boss.x, y: boss.y, z: boss.z, spin: 0, spinV: 1, hue: 40, resolved: false });
           window.SFX && window.SFX.win && window.SFX.win();
           shakeUntil = elapsed + 0.35;
-          boss = null; bossClock = 0;
+          boss = null; advanceStage();
         }
         continue;
       }
@@ -1180,6 +1220,7 @@
     weaponLvl = 1; fireClock = 0; lvlUpAt = -99;
     combo = 0; comboUntil = 0; shield = false;
     boss = null; bossClock = 0;
+    stageNum = 1; bannerText = ''; bannerUntil = 0;
     warp = 1.2; novaFlash = -99;
     ship.x = ship.tx = 0; ship.y = 1.9; ship.ty = 1.0; ship.bank = 0;
     objects.length = 0;
@@ -1204,7 +1245,7 @@
     const finalScore = Math.floor(score);
     const improved = window.Hub.saveBest('space', finalScore, 'high');
     syncBest();
-    overText.textContent = `Bạn nhặt được ${starCount} ⭐ và đạt ${finalScore} điểm.`
+    overText.textContent = `Tới Màn ${stageNum} · ${starCount} ⭐ · ${finalScore} điểm.`
       + (improved ? ' 🏆 Kỷ lục mới!' : '');
     overModal.classList.add('open');
   }
