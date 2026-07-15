@@ -110,7 +110,7 @@ function tone(color, dur) {
     o.type = 'sine';
     o.connect(g); g.connect(audio.destination);
     g.gain.setValueAtTime(0.001, audio.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.25, audio.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.45, audio.currentTime + 0.02);
     g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + dur);
     o.start(); o.stop(audio.currentTime + dur + 0.02);
   } catch(e) {}
