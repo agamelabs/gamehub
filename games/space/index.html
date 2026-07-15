@@ -42,6 +42,42 @@
   .space-overlay p { margin: 0 0 16px; color: #cdd3f5; font-size: 15px; line-height: 1.5; }
   .space-hint { text-align: center; color: var(--ink-soft); font-size: 14px; margin: 12px 0 0; }
   .space-lives { letter-spacing: 2px; }
+
+  /* menu / shop / help screens live inside the overlay */
+  .sc[hidden] { display: none; }
+  .space-overlay { flex-direction: column; }
+  .menu-stat { font-size: 14px; }
+  .menu-stat b { color: #ffd54f; }
+  .space-overlay .btn { min-width: 190px; margin: 5px auto; display: block; }
+  .menu-row { display: flex; gap: 8px; justify-content: center; }
+  .menu-row .btn { min-width: 0; margin: 5px 0; }
+  .shop-list { width: 100%; max-width: 340px; margin: 4px auto 12px; display: flex; flex-direction: column; gap: 8px; }
+  .shop-item {
+    display: flex; align-items: center; gap: 10px; text-align: left;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 14px; padding: 8px 10px;
+  }
+  .shop-item .ic { font-size: 26px; }
+  .shop-item .info { flex: 1; min-width: 0; }
+  .shop-item .info b { font-size: 14px; }
+  .shop-item .info span { display: block; font-size: 11px; color: #b9c1e6; }
+  .shop-item .dots { font-size: 11px; color: #ffd54f; letter-spacing: 1px; }
+  .shop-buy {
+    border: none; border-radius: 10px; padding: 8px 10px; font-family: inherit;
+    font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap;
+    background: var(--green); color: #123; min-width: 66px;
+  }
+  .shop-buy:disabled { background: #55607d; color: #aab; cursor: default; }
+  .shop-buy.max { background: #ffd54f; color: #123; }
+  .space-pause {
+    position: absolute; top: 10px; right: 10px; z-index: 5;
+    width: 40px; height: 40px; border-radius: 12px;
+    background: rgba(12,8,34,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.25);
+    font-size: 16px; cursor: pointer;
+  }
+  .space-pause[hidden] { display: none; }
+  .help-body { text-align: left; max-width: 320px; margin: 0 auto 14px; }
+  .help-body p { margin: 6px 0; font-size: 14px; color: #dfe4f7; }
 </style>
 </head>
 <body class="game-page">
@@ -62,12 +98,47 @@
 <main class="game-main">
   <div class="space-stage" id="stage">
     <canvas id="c"></canvas>
+    <button class="space-pause" id="pauseBtn" hidden aria-label="Tạm dừng">⏸</button>
     <div class="space-overlay" id="overlay">
+      <!-- MAIN MENU -->
+      <div class="sc" id="menuScreen">
+        <div style="font-size:58px">🚀</div>
+        <h2>Phi Thuyền Nhặt Sao</h2>
+        <p class="menu-stat">🏆 Kỷ lục <b id="menuBest">—</b> · 🪙 <b id="menuCoins">0</b> sao</p>
+        <button class="btn" id="btnPlay">▶ Chơi</button>
+        <div class="menu-row">
+          <button class="btn ghost" id="btnShop">🛒 Cửa hàng</button>
+          <button class="btn ghost" id="btnHelp">❓ Cách chơi</button>
+        </div>
+      </div>
+      <!-- SHOP -->
+      <div class="sc" id="shopScreen" hidden>
+        <h2>🛒 Cửa hàng</h2>
+        <p class="menu-stat">Có <b id="shopCoins">0</b> 🪙 sao — nhặt sao khi chơi để mua nha!</p>
+        <div class="shop-list" id="shopList"></div>
+        <button class="btn ghost" id="btnShopBack">← Quay lại</button>
+      </div>
+      <!-- HELP -->
+      <div class="sc" id="helpScreen" hidden>
+        <h2>❓ Cách chơi</h2>
+        <div class="help-body">
+          <p>👆 <b>Kéo</b> màn hình để lái phi thuyền.</p>
+          <p>🔫 Phi thuyền <b>tự bắn</b> — canh làn để phá ☄️.</p>
+          <p>⭐ Nhặt sao: ăn điểm & dành mua nâng cấp.</p>
+          <p>⚡ nâng súng · 🛡️ khiên · 💥 NOVA quét màn.</p>
+          <p>🔥 Bắn/né liên tục để lên <b>combo</b>.</p>
+          <p>☄️ Hạ <b>BOSS</b> để qua màn mới, khó dần!</p>
+        </div>
+        <button class="btn ghost" id="btnHelpBack">← Quay lại</button>
+      </div>
+    </div>
+    <!-- PAUSE -->
+    <div class="space-overlay" id="pauseOverlay" hidden>
       <div>
-        <div style="font-size:64px">🚀</div>
-        <h2>Bay vào vũ trụ!</h2>
-        <p>Kéo để lái — tự bắn 🔫 phá thiên thạch ☄️!<br />⚡ nâng súng (Lv3 có drone), 🛡️ khiên, 💥 NOVA quét màn hình.<br />Hạ BOSS để qua màn mới — mỗi màn một chủ đề, khó dần nha!</p>
-        <button class="btn" id="startBtn">Bắt đầu</button>
+        <div style="font-size:52px">⏸</div>
+        <h2>Tạm dừng</h2>
+        <button class="btn" id="btnResume">▶ Tiếp tục</button>
+        <button class="btn ghost" id="btnQuit">🏠 Về menu</button>
       </div>
     </div>
   </div>
@@ -81,7 +152,8 @@
     <p id="overText">Bạn được … điểm.</p>
     <div class="actions">
       <button class="btn" id="playAgain">Chơi lại</button>
-      <a class="btn ghost" href="../../">Về trang chủ</a>
+      <button class="btn ghost" id="overShop">🛒 Cửa hàng</button>
+      <a class="btn ghost" href="../../">Trang chủ</a>
     </div>
   </div>
 </div>
@@ -184,6 +256,8 @@
   // Combo multiplier — chain pickups/kills within the window to score more.
   let combo = 0, comboUntil = 0;
   let shield = false;         // one-hit shield from a 🛡️ power-up
+  let magnet = false;         // star magnet (a shop upgrade)
+  let paused = false;         // pause state
   let boss = null;            // giant asteroid boss, or null
   let bossClock = 0;          // counts up within a stage toward the boss
   const STAGE_WAVE = 18;      // seconds of a wave before the stage's boss
@@ -1245,10 +1319,15 @@
       const o = objects[i];
       o.z -= speed * dt;
       o.spin += o.spinV * dt;
+      // star magnet: gently curve nearby stars toward the ship as they close in
+      if (magnet && o.kind === 'star' && o.z < 9 && o.z > SHIP_Z) {
+        const k = Math.min(1, dt * 3);
+        o.x += (ship.x - o.x) * k; o.y += (ship.y - o.y) * k;
+      }
       if (!o.resolved && o.z <= SHIP_Z) {
         o.resolved = true;
         const d = Math.hypot(o.x - ship.x, o.y - ship.y);
-        if (o.kind === 'star' && d < 0.95) {
+        if (o.kind === 'star' && d < (magnet ? 1.7 : 0.95)) {
           bumpCombo();
           starCount++; starsEl.textContent = starCount;
           addScore(10 * comboMult(), o.x, o.y, o.z, '#ffe98a');
@@ -1357,6 +1436,7 @@
 
   function loop(t) {
     if (!running) return;
+    if (paused) { lastT = t; requestAnimationFrame(loop); return; }   // frozen
     const dt = Math.min(0.05, (t - lastT) / 1000 || 0);
     lastT = t;
     update(dt);
@@ -1410,6 +1490,89 @@
   function syncBest() {
     const b = window.Hub.getBest('space');
     bestEl.textContent = b == null ? '—' : b;
+  }
+
+  // --- Meta-progression: star bank + permanent upgrade shop -------------
+  const COINS_KEY = 'gh.space.coins';
+  const UP_KEY = 'gh.space.up';
+  const UPGRADES = [
+    { id: 'life',   icon: '❤️', name: 'Mạng khởi đầu',    desc: 'Bắt đầu với +1 tim',        max: 2, cost: (l) => 120 + l * 180 },
+    { id: 'weapon', icon: '🔫', name: 'Súng khởi đầu',    desc: 'Vào trận ở cấp súng cao hơn', max: 2, cost: (l) => 180 + l * 260 },
+    { id: 'shield', icon: '🛡️', name: 'Khiên khởi đầu',   desc: 'Vào trận có sẵn 1 khiên',    max: 1, cost: () => 300 },
+    { id: 'magnet', icon: '🧲', name: 'Nam châm hút sao', desc: 'Tự hút sao ở gần',           max: 1, cost: () => 260 },
+  ];
+  function getCoins() { return parseInt(localStorage.getItem(COINS_KEY) || '0', 10) || 0; }
+  function setCoins(v) { localStorage.setItem(COINS_KEY, String(Math.max(0, Math.floor(v)))); }
+  function getUp() { try { return JSON.parse(localStorage.getItem(UP_KEY)) || {}; } catch (e) { return {}; } }
+  function setUp(u) { localStorage.setItem(UP_KEY, JSON.stringify(u)); }
+
+  const menuScreen = document.getElementById('menuScreen');
+  const shopScreen = document.getElementById('shopScreen');
+  const helpScreen = document.getElementById('helpScreen');
+  const pauseOverlay = document.getElementById('pauseOverlay');
+  const pauseBtn = document.getElementById('pauseBtn');
+
+  function showScreen(name) {
+    overlay.hidden = false;
+    menuScreen.hidden = name !== 'menu';
+    shopScreen.hidden = name !== 'shop';
+    helpScreen.hidden = name !== 'help';
+    if (name === 'menu') refreshMenu();
+    if (name === 'shop') buildShop();
+  }
+  function refreshMenu() {
+    const b = window.Hub.getBest('space');
+    document.getElementById('menuBest').textContent = b == null ? '—' : b;
+    document.getElementById('menuCoins').textContent = getCoins();
+  }
+  function buildShop() {
+    const coins = getCoins();
+    document.getElementById('shopCoins').textContent = coins;
+    const up = getUp();
+    const list = document.getElementById('shopList');
+    list.innerHTML = '';
+    for (const u of UPGRADES) {
+      const lvl = up[u.id] || 0;
+      const maxed = lvl >= u.max;
+      const price = maxed ? 0 : u.cost(lvl);
+      const dots = '●'.repeat(lvl) + '○'.repeat(u.max - lvl);
+      const row = document.createElement('div');
+      row.className = 'shop-item';
+      row.innerHTML =
+        `<span class="ic">${u.icon}</span>` +
+        `<span class="info"><b>${u.name}</b><span>${u.desc}</span>` +
+        `<span class="dots">${dots}</span></span>`;
+      const btn = document.createElement('button');
+      btn.className = 'shop-buy' + (maxed ? ' max' : '');
+      if (maxed) { btn.textContent = 'TỐI ĐA'; btn.disabled = true; }
+      else { btn.textContent = '🪙 ' + price; btn.disabled = coins < price; }
+      btn.addEventListener('click', () => {
+        const c = getCoins(); const u2 = getUp(); const lv = u2[u.id] || 0;
+        if (lv >= u.max) return;
+        const p = u.cost(lv);
+        if (c < p) return;
+        setCoins(c - p); u2[u.id] = lv + 1; setUp(u2);
+        window.SFX && window.SFX.pop && window.SFX.pop();
+        buildShop();
+      });
+      row.appendChild(btn);
+      list.appendChild(row);
+    }
+  }
+
+  // --- Pause ------------------------------------------------------------
+  function setPaused(on) {
+    if (!running) return;
+    paused = on;
+    pauseOverlay.hidden = !on;
+    if (on) { Music.stop(); } else { Music.start(); lastT = performance.now(); }
+  }
+  function quitToMenu() {
+    running = false; paused = false;
+    pauseOverlay.hidden = true; pauseBtn.hidden = true;
+    Music.stop();
+    setCoins(getCoins() + starCount);     // keep the stars collected so far
+    showScreen('menu');
   }
 
   // --- Procedural background music --------------------------------------
@@ -1489,12 +1652,16 @@
   function start() {
     resize();
     overlay.hidden = true;
-    running = true;
-    score = 0; starCount = 0; lives = 3;
+    overModal.classList.remove('open');
+    pauseOverlay.hidden = true;
+    pauseBtn.hidden = false;
+    running = true; paused = false;
+    const up = getUp();
+    score = 0; starCount = 0; lives = 3 + (up.life || 0);
     speed = 7; elapsed = 0; spawnClock = 0; spawnGap = 0.7;
     shakeUntil = 0;
-    weaponLvl = 1; fireClock = 0; lvlUpAt = -99;
-    combo = 0; comboUntil = 0; shield = false;
+    weaponLvl = Math.min(3, 1 + (up.weapon || 0)); fireClock = 0; lvlUpAt = -99;
+    combo = 0; comboUntil = 0; shield = (up.shield || 0) > 0; magnet = (up.magnet || 0) > 0;
     boss = null; bossClock = 0;
     stageNum = 1; bannerText = ''; bannerUntil = 0;
     warp = 1.2; novaFlash = -99;
@@ -1510,7 +1677,7 @@
     seedBackground();
     scoreEl.textContent = '0';
     starsEl.textContent = '0';
-    livesEl.textContent = '3';
+    livesEl.textContent = String(lives);
     lastT = performance.now();
     window.SFX && window.SFX.start();
     Music.start();
@@ -1518,27 +1685,41 @@
   }
 
   function end() {
-    running = false;
+    running = false; paused = false;
+    pauseBtn.hidden = true; pauseOverlay.hidden = true;
     Music.stop();
     window.SFX && window.SFX.gameover();
     const finalScore = Math.floor(score);
     const improved = window.Hub.saveBest('space', finalScore, 'high');
+    setCoins(getCoins() + starCount);     // bank the stars from this run
     syncBest();
-    overText.textContent = `Tới Màn ${stageNum} · ${starCount} ⭐ · ${finalScore} điểm.`
+    overText.textContent = `Tới Màn ${stageNum} · ${starCount} 🪙 · ${finalScore} điểm.`
       + (improved ? ' 🏆 Kỷ lục mới!' : '');
     overModal.classList.add('open');
   }
 
-  document.getElementById('startBtn').addEventListener('click', start);
-  document.getElementById('playAgain').addEventListener('click', () => {
+  // --- Wire up menu / shop / pause -------------------------------------
+  document.getElementById('btnPlay').addEventListener('click', start);
+  document.getElementById('btnShop').addEventListener('click', () => showScreen('shop'));
+  document.getElementById('btnHelp').addEventListener('click', () => showScreen('help'));
+  document.getElementById('btnShopBack').addEventListener('click', () => showScreen('menu'));
+  document.getElementById('btnHelpBack').addEventListener('click', () => showScreen('menu'));
+  ['pointerdown', 'mousedown', 'touchstart'].forEach((ev) =>
+    pauseBtn.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
+  pauseBtn.addEventListener('click', (e) => { e.stopPropagation(); setPaused(!paused); });
+  document.getElementById('btnResume').addEventListener('click', () => setPaused(false));
+  document.getElementById('btnQuit').addEventListener('click', quitToMenu);
+  document.getElementById('playAgain').addEventListener('click', start);
+  document.getElementById('overShop').addEventListener('click', () => {
     overModal.classList.remove('open');
-    start();
+    showScreen('shop');
   });
 
   resize();
   seedBackground();
   render();
   syncBest();
+  refreshMenu();
 })();
 </script>
 </body>
