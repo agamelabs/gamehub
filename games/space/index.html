@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Phi Thuyền Nhặt Sao · GameHub</title>
+<link rel="stylesheet" href="../../css/style.css" />
+<link rel="manifest" href="../../manifest.webmanifest" />
+<meta name="theme-color" content="#ff6b9a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="GameHub" />
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png" />
+<style>
+  /* Local styles for the 3D space game. Genuine perspective projection is
+     done on a 2D canvas, so no external 3D library is needed — the game
+     stays self-contained and works fully offline like the rest of the hub. */
+  .space-stage {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+    aspect-ratio: 3 / 4;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    background: radial-gradient(120% 90% at 50% 0%, #2a2358 0%, #140f30 55%, #0a0720 100%);
+    touch-action: none;
+  }
+  .space-stage canvas { display: block; width: 100%; height: 100%; }
+  .space-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center; color: #fff;
+    background: rgba(12, 8, 34, 0.55);
+    backdrop-filter: blur(2px);
+    padding: 20px;
+  }
+  .space-overlay[hidden] { display: none; }
+  .space-overlay h2 { margin: 8px 0 4px; font-size: 26px; }
+  .space-overlay p { margin: 0 0 16px; color: #cdd3f5; font-size: 15px; line-height: 1.5; }
+  .space-hint { text-align: center; color: var(--ink-soft); font-size: 14px; margin: 12px 0 0; }
+  .space-lives { letter-spacing: 2px; }
+</style>
+</head>
+<body class="game-page">
+<div class="game-topbar">
+  <a class="back" href="../../">← Trang chủ</a>
+  <div>
+    <h1>🚀 Phi Thuyền Nhặt Sao</h1>
+    <div class="who" id="whoLabel"></div>
+  </div>
+  <div class="stats">
+    <div class="stat">Điểm:<b id="score">0</b></div>
+    <div class="stat">⭐<b id="stars">0</b></div>
+    <div class="stat space-lives">❤<b id="lives">3</b></div>
+    <div class="stat">🏆<b id="best">—</b></div>
+  </div>
+</div>
+
+<main class="game-main">
+  <div class="space-stage" id="stage">
+    <canvas id="c"></canvas>
+    <div class="space-overlay" id="overlay">
+      <div>
+        <div style="font-size:64px">🚀</div>
+        <h2>Bay vào vũ trụ!</h2>
+        <p>Kéo hoặc vuốt để lái phi thuyền.<br />Nhặt sao ⭐ ăn điểm, né thiên thạch ☄️ nha!</p>
+        <button class="btn" id="startBtn">Bắt đầu</button>
+      </div>
+    </div>
+  </div>
+  <p class="space-hint">Kéo màn hình để lái · ⭐ +10 điểm · Né ☄️ kẻo mất tim ❤</p>
+</main>
+
+<div class="modal" id="overModal">
+  <div class="box">
+    <div style="font-size:48px">🛸</div>
+    <h2>Hết nhiên liệu!</h2>
+    <p id="overText">Bạn được … điểm.</p>
+    <div class="actions">
+      <button class="btn" id="playAgain">Chơi lại</button>
+      <a class="btn ghost" href="../../">Về trang chủ</a>
+    </div>
+  </div>
+</div>
+
+<script src="../../js/sfx.js"></script>
+<script src="../../js/main.js"></script>
+<script src="../../js/pwa.js"></script>
+<script>
+(function () {
+  const stage    = document.getElementById('stage');
+  const canvas   = document.getElementById('c');
+  const ctx      = canvas.getContext('2d');
+  const overlay  = document.getElementById('overlay');
+  const scoreEl  = document.getElementById('score');
+  const starsEl  = document.getElementById('stars');
+  const livesEl  = document.getElementById('lives');
+  const bestEl   = document.getElementById('best');
+  const overModal= document.getElementById('overModal');
+  const overText = document.getElementById('overText');
+
+  // --- World & perspective camera ---------------------------------------
+  // The camera sits at the origin looking down +z. A world point (x, y, z)
+  // projects to the screen with screenX = cx + x*focal/z (same for y). Things
+  // far away (big z) look small; as z shrinks they zoom toward the player.
+  const SHIP_Z = 2.2;     // depth plane the ship lives on (closest objects)
+  const FAR_Z  = 24;      // depth objects spawn at
+  const X_MAX  = 3.4;     // how far left/right the ship can reach (world units)
+  const Y_MAX  = 2.2;     // how far up/down the ship can reach
+
+  let W = 0, H = 0, cx = 0, cy = 0, focal = 0, dpr = 1;
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2; cy = H / 2;
+    // Pick a focal length so the ship's reach maps neatly inside the frame.
+    focal = (cx * 0.92) * SHIP_Z / X_MAX;
+  }
+  window.addEventListener('resize', resize);
+
+  function project(x, y, z) {
+    const s = focal / z;
+    return { x: cx + x * s, y: cy + y * s, s };
+  }
+  // Inverse-project a screen point onto the ship plane (for pointer control).
+  function screenToShip(px, py) {
+    const s = focal / SHIP_Z;
+    return { x: (px - cx) / s, y: (py - cy) / s };
+  }
+
+  // --- Game state -------------------------------------------------------
+  let running = false;
+  let score = 0, starCount = 0, lives = 3;
+  let speed = 7;               // world units / second, ramps up over time
+  let elapsed = 0;
+  let spawnClock = 0, spawnGap = 0.7;
+  let lastT = 0;
+  let shakeUntil = 0;
+
+  const ship = { x: 0, y: 1.0, tx: 0, ty: 1.0, bank: 0 };
+  const objects = [];         // stars & asteroids flying toward the camera
+  const bgStars = [];         // decorative streaming starfield (no collision)
+
+  function seedBackground() {
+    bgStars.length = 0;
+    for (let i = 0; i < 90; i++) {
+      bgStars.push({
+        x: (Math.random() * 2 - 1) * 9,
+        y: (Math.random() * 2 - 1) * 9,
+        z: 1 + Math.random() * (FAR_Z - 1),
+        w: 0.4 + Math.random() * 1.2,
+      });
+    }
+  }
+
+  function spawnObject() {
+    const isStar = Math.random() < 0.62;
+    objects.push({
+      star: isStar,
+      x: (Math.random() * 2 - 1) * X_MAX,
+      y: (Math.random() * 2 - 1) * Y_MAX,
+      z: FAR_Z,
+      spin: Math.random() * Math.PI * 2,
+      spinV: (Math.random() * 2 - 1) * 2.5,
+      hue: isStar ? 48 : 20 + Math.random() * 20,
+      resolved: false,
+    });
+  }
+
+  // --- Drawing helpers --------------------------------------------------
+  function drawStarShape(x, y, r, rot, fill, glow) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.shadowColor = glow; ctx.shadowBlur = r * 0.9;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rad = (i % 2 === 0) ? r : r * 0.45;
+      const a = (Math.PI / 5) * i - Math.PI / 2;
+      const px = Math.cos(a) * rad, py = Math.sin(a) * rad;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.restore();
+  }
+
+  function drawAsteroid(x, y, r, rot, hue) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    const pts = 9;
+    for (let i = 0; i < pts; i++) {
+      const a = (Math.PI * 2 / pts) * i;
+      const rad = r * (0.78 + ((i * 37) % 10) / 22); // deterministic lumpiness
+      const px = Math.cos(a) * rad, py = Math.sin(a) * rad;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    const g = ctx.createLinearGradient(-r, -r, r, r);
+    g.addColorStop(0, `hsl(${hue}, 30%, 58%)`);
+    g.addColorStop(1, `hsl(${hue}, 35%, 34%)`);
+    ctx.fillStyle = g; ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.arc(-r * 0.2, -r * 0.15, r * 0.22, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(r * 0.28, r * 0.2, r * 0.15, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawShip() {
+    const p = project(ship.x, ship.y, SHIP_Z);
+    const size = p.s * 0.42;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(ship.bank * 0.5);
+    // thruster flame (flickers), drawn behind the body
+    const flame = size * (1.1 + Math.sin(elapsed * 30) * 0.25);
+    const fg = ctx.createLinearGradient(0, size * 0.5, 0, size * 0.5 + flame);
+    fg.addColorStop(0, '#ffe27a');
+    fg.addColorStop(0.5, '#ff9a3c');
+    fg.addColorStop(1, 'rgba(255,90,40,0)');
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.32, size * 0.5);
+    ctx.lineTo(0, size * 0.5 + flame);
+    ctx.lineTo(size * 0.32, size * 0.5);
+    ctx.closePath(); ctx.fill();
+    // fins
+    ctx.fillStyle = '#ff6b9a';
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.4, size * 0.5); ctx.lineTo(-size * 0.7, size * 0.7);
+    ctx.lineTo(-size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(size * 0.4, size * 0.5); ctx.lineTo(size * 0.7, size * 0.7);
+    ctx.lineTo(size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
+    // body
+    const bg = ctx.createLinearGradient(-size * 0.5, 0, size * 0.5, 0);
+    bg.addColorStop(0, '#cfe6ff');
+    bg.addColorStop(0.5, '#ffffff');
+    bg.addColorStop(1, '#a9c8ee');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.9);
+    ctx.quadraticCurveTo(size * 0.5, -size * 0.1, size * 0.4, size * 0.55);
+    ctx.lineTo(-size * 0.4, size * 0.55);
+    ctx.quadraticCurveTo(-size * 0.5, -size * 0.1, 0, -size * 0.9);
+    ctx.closePath(); ctx.fill();
+    // window
+    ctx.fillStyle = '#4ec3ff';
+    ctx.beginPath(); ctx.arc(0, -size * 0.15, size * 0.24, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.arc(-size * 0.08, -size * 0.22, size * 0.09, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    let ox = 0, oy = 0;
+    if (elapsed < shakeUntil) {
+      const m = (shakeUntil - elapsed) * 40;
+      ox = (Math.random() * 2 - 1) * m; oy = (Math.random() * 2 - 1) * m;
+    }
+    ctx.save();
+    ctx.translate(ox, oy);
+
+    // streaming background stars
+    for (const s of bgStars) {
+      const p = project(s.x, s.y, s.z);
+      if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) continue;
+      const r = Math.max(0.4, p.s * s.w * 0.012);
+      ctx.globalAlpha = Math.min(1, (FAR_Z - s.z) / FAR_Z + 0.25);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // objects, far ones first so near ones overlap them
+    const sorted = objects.slice().sort((a, b) => b.z - a.z);
+    for (const o of sorted) {
+      const p = project(o.x, o.y, o.z);
+      const r = p.s * (o.star ? 0.16 : 0.2);
+      if (o.star) {
+        drawStarShape(p.x, p.y, r, o.spin, '#ffd54f', '#ffe98a');
+      } else {
+        drawAsteroid(p.x, p.y, r, o.spin, o.hue);
+      }
+    }
+
+    drawShip();
+    ctx.restore();
+  }
+
+  // --- Update -----------------------------------------------------------
+  function hitFlash(ok) {
+    stage.animate(
+      [{ filter: 'brightness(1)' },
+       { filter: ok ? 'brightness(1.5)' : 'brightness(1.4) saturate(0) hue-rotate(-20deg)' },
+       { filter: 'brightness(1)' }],
+      { duration: 260 }
+    );
+  }
+
+  function update(dt) {
+    elapsed += dt;
+    speed = 7 + Math.min(elapsed * 0.25, 9);      // gently ramps toward 16
+    spawnGap = Math.max(0.32, 0.7 - elapsed * 0.006);
+    score += dt * 2;                               // small survival trickle
+    scoreEl.textContent = Math.floor(score);
+
+    // ease ship toward its target position, and bank into turns
+    const dx = ship.tx - ship.x, dy = ship.ty - ship.y;
+    ship.x += dx * Math.min(1, dt * 12);
+    ship.y += dy * Math.min(1, dt * 12);
+    ship.bank += (Math.max(-1, Math.min(1, dx * 2)) - ship.bank) * Math.min(1, dt * 8);
+
+    // background streaming
+    for (const s of bgStars) {
+      s.z -= speed * dt;
+      if (s.z < 0.6) {
+        s.z = FAR_Z;
+        s.x = (Math.random() * 2 - 1) * 9;
+        s.y = (Math.random() * 2 - 1) * 9;
+      }
+    }
+
+    // spawn
+    spawnClock += dt;
+    if (spawnClock >= spawnGap) { spawnClock = 0; spawnObject(); }
+
+    // move objects & resolve collisions when they reach the ship plane
+    for (let i = objects.length - 1; i >= 0; i--) {
+      const o = objects[i];
+      o.z -= speed * dt;
+      o.spin += o.spinV * dt;
+      if (!o.resolved && o.z <= SHIP_Z) {
+        o.resolved = true;
+        const d = Math.hypot(o.x - ship.x, o.y - ship.y);
+        if (o.star && d < 0.95) {
+          starCount++; score += 10;
+          starsEl.textContent = starCount;
+          scoreEl.textContent = Math.floor(score);
+          window.SFX && window.SFX.eat();
+          hitFlash(true);
+          objects.splice(i, 1);
+          continue;
+        }
+        if (!o.star && d < 0.82) {
+          lives--;
+          livesEl.textContent = lives;
+          window.SFX && window.SFX.wrong();
+          hitFlash(false);
+          shakeUntil = elapsed + 0.3;
+          objects.splice(i, 1);
+          if (lives <= 0) { end(); return; }
+          continue;
+        }
+      }
+      if (o.z < 0.6) objects.splice(i, 1);
+    }
+  }
+
+  function loop(t) {
+    if (!running) return;
+    const dt = Math.min(0.05, (t - lastT) / 1000 || 0);
+    lastT = t;
+    update(dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // --- Controls ---------------------------------------------------------
+  let dragging = false;
+  function pointerTo(e) {
+    const r = stage.getBoundingClientRect();
+    const px = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    const py = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    const w = screenToShip(px, py);
+    ship.tx = Math.max(-X_MAX, Math.min(X_MAX, w.x));
+    ship.ty = Math.max(-Y_MAX, Math.min(Y_MAX, w.y));
+  }
+  function onDown(e) { if (!running) return; dragging = true; pointerTo(e); e.preventDefault(); }
+  function onMove(e) { if (!running || !dragging) return; pointerTo(e); e.preventDefault(); }
+  function onUp()    { dragging = false; }
+  stage.addEventListener('mousedown', onDown);
+  stage.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  stage.addEventListener('touchstart', onDown, { passive: false });
+  stage.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('touchend', onUp);
+
+  window.addEventListener('keydown', (e) => {
+    if (!running) return;
+    const step = 0.7;
+    if (e.key === 'ArrowLeft')  ship.tx = Math.max(-X_MAX, ship.tx - step);
+    if (e.key === 'ArrowRight') ship.tx = Math.min(X_MAX,  ship.tx + step);
+    if (e.key === 'ArrowUp')    ship.ty = Math.max(-Y_MAX, ship.ty - step);
+    if (e.key === 'ArrowDown')  ship.ty = Math.min(Y_MAX,  ship.ty + step);
+  });
+
+  // --- Flow -------------------------------------------------------------
+  function syncBest() {
+    const b = window.Hub.getBest('space');
+    bestEl.textContent = b == null ? '—' : b;
+  }
+
+  function start() {
+    resize();
+    overlay.hidden = true;
+    running = true;
+    score = 0; starCount = 0; lives = 3;
+    speed = 7; elapsed = 0; spawnClock = 0; spawnGap = 0.7;
+    shakeUntil = 0;
+    ship.x = ship.tx = 0; ship.y = ship.ty = 1.0; ship.bank = 0;
+    objects.length = 0;
+    seedBackground();
+    scoreEl.textContent = '0';
+    starsEl.textContent = '0';
+    livesEl.textContent = '3';
+    lastT = performance.now();
+    window.SFX && window.SFX.start();
+    requestAnimationFrame((t) => { lastT = t; loop(t); });
+  }
+
+  function end() {
+    running = false;
+    window.SFX && window.SFX.gameover();
+    const finalScore = Math.floor(score);
+    const improved = window.Hub.saveBest('space', finalScore, 'high');
+    syncBest();
+    overText.textContent = `Bạn nhặt được ${starCount} ⭐ và đạt ${finalScore} điểm.`
+      + (improved ? ' 🏆 Kỷ lục mới!' : '');
+    overModal.classList.add('open');
+  }
+
+  document.getElementById('startBtn').addEventListener('click', start);
+  document.getElementById('playAgain').addEventListener('click', () => {
+    overModal.classList.remove('open');
+    start();
+  });
+
+  resize();
+  seedBackground();
+  render();
+  syncBest();
+})();
+</script>
+</body>
+</html>
