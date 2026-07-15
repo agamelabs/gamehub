@@ -141,13 +141,17 @@
   let aiming = false, aimStart = null, aimNow = null;
   let bob = 0;
   let resultFlash = 0, resultText = '', resultColor = '';
+  let netSwish = 0;                  // >0 while the net is swishing after a make
 
   function newBall() {
     ball = {
       x: START.x, y: START.y, z: START.z,
       vx: 0, vy: 0, vz: 0,
       flying: false, scored: false, done: false, touchedRim: false,
-      spin: 0,
+      bankHit: false,
+      rot: 0, rotV: 0,               // visible backspin
+      squash: 0, squashDir: 0,       // brief deform on impacts (0 = round)
+      trail: [],                     // recent screen positions for a motion streak
     };
   }
 
@@ -218,14 +222,43 @@
     if (back) ctx.ellipse(e.cxp, e.cyp, e.rx, e.ry, 0, Math.PI, Math.PI * 2);
     else      ctx.ellipse(e.cxp, e.cyp, e.rx, e.ry, 0, 0, Math.PI);
     ctx.stroke();
-    if (back) {
-      // net hint
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.5;
-      for (let i = -2; i <= 2; i++) {
-        const nx = e.cxp + (i / 2) * e.rx * 0.8;
-        ctx.beginPath(); ctx.moveTo(nx, e.cyp);
-        ctx.lineTo(e.cxp + (i / 4) * e.rx * 0.5, e.cyp + e.ry * 2.6); ctx.stroke();
-      }
+    ctx.restore();
+    if (back) drawNet(e);
+  }
+
+  // A hanging net drawn as crossing strands. It bulges downward and sways for
+  // a moment after a make (netSwish), so a swish visibly ripples the net.
+  function drawNet(e) {
+    const depth = e.ry * 2.8;               // how far the net hangs
+    const swish = Math.max(0, netSwish);
+    const bulge = swish * e.ry * 1.6;       // downward stretch right after a make
+    const sway = Math.sin(swish * 22) * swish * e.rx * 0.18;
+    const rings = 4, strands = 8;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+    ctx.lineWidth = 1.3;
+    // vertical strands taper from the rim toward a gathered point below
+    const tipY = e.cyp + depth + bulge;
+    for (let i = 0; i < strands; i++) {
+      const a = (Math.PI * 2 / strands) * i;
+      const topX = e.cxp + Math.cos(a) * e.rx;
+      const topY = e.cyp + Math.sin(a) * e.ry * 0.4;
+      const midX = e.cxp + Math.cos(a) * e.rx * 0.35 + sway;
+      const midY = e.cyp + depth * 0.55 + bulge * 0.7;
+      const botX = e.cxp + Math.cos(a) * e.rx * 0.12 + sway * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(topX, topY);
+      ctx.quadraticCurveTo(midX, midY, botX, tipY);
+      ctx.stroke();
+    }
+    // horizontal rings connecting the strands, closer together lower down
+    for (let k = 1; k <= rings; k++) {
+      const f = k / (rings + 1);
+      const ry = e.cyp + depth * f + bulge * f;
+      const rx = e.rx * (1 - f * 0.8);
+      ctx.beginPath();
+      ctx.ellipse(e.cxp + sway * f, ry, rx, rx * 0.28, 0, 0, 7);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -235,23 +268,53 @@
     const p = project(ball.x, ball.y, ball.z);
     if (!p) return;
     const r = Math.max(4, BALL_R * p.s);
+
+    // motion trail — faint ghosts of recent positions, fading with age
+    if (ball.trail.length > 1) {
+      ctx.save();
+      for (let i = 0; i < ball.trail.length; i++) {
+        const tp = ball.trail[i];
+        const a = (i + 1) / ball.trail.length;
+        ctx.globalAlpha = a * 0.28;
+        ctx.fillStyle = '#ff8a3c';
+        ctx.beginPath(); ctx.arc(tp.x, tp.y, r * (0.55 + a * 0.4), 0, 7); ctx.fill();
+      }
+      ctx.restore();
+    }
+
     ctx.save();
-    // soft shadow on the floor
+    // soft shadow on the floor, tighter and fainter as the ball rises
     const sh = project(ball.x, -1.55, ball.z);
     if (sh) {
-      ctx.fillStyle = 'rgba(60,30,10,0.22)';
-      ctx.beginPath(); ctx.ellipse(sh.x, sh.y, r * 0.9, r * 0.35, 0, 0, 7); ctx.fill();
+      const lift = Math.max(0, ball.y + 1.55);
+      ctx.globalAlpha = Math.max(0.08, 0.28 - lift * 0.04);
+      ctx.fillStyle = 'rgba(60,30,10,1)';
+      ctx.beginPath(); ctx.ellipse(sh.x, sh.y, r * (0.95 - lift * 0.05), r * 0.32, 0, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
     }
-    const g = ctx.createRadialGradient(p.x - r * 0.3, p.y - r * 0.3, r * 0.2, p.x, p.y, r);
+
+    // squash-and-stretch: deform the ball briefly on impacts
+    ctx.translate(p.x, p.y);
+    const sq = ball.squash;
+    if (sq > 0.001) {
+      ctx.rotate(ball.squashDir);
+      ctx.scale(1 + sq * 0.35, 1 - sq * 0.35);
+      ctx.rotate(-ball.squashDir);
+    }
+
+    const g = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r);
     g.addColorStop(0, '#ffb367');
     g.addColorStop(1, '#e2621d');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
-    // seams
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+
+    // seams — rotate with the ball's spin so the throw visibly spins
+    ctx.rotate(ball.rot);
     ctx.strokeStyle = 'rgba(60,20,0,0.55)'; ctx.lineWidth = Math.max(1, r * 0.06);
-    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(p.x - r, p.y); ctx.quadraticCurveTo(p.x, p.y + r * 0.3, p.x + r, p.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(p.x, p.y - r); ctx.quadraticCurveTo(p.x + r * 0.3, p.y, p.x, p.y + r); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-r, 0); ctx.quadraticCurveTo(0, r * 0.55, r, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-r, 0); ctx.quadraticCurveTo(0, -r * 0.55, r, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -r); ctx.quadraticCurveTo(r * 0.55, 0, 0, r); ctx.stroke();
     ctx.restore();
   }
 
@@ -314,6 +377,7 @@
     ball.vy = 5.0 + power * 7.0;      // upward launch speed  (5.0 – 12.0)
     ball.vz = 3.0 + power * 7.0;      // forward (into-screen) speed (3.0 – 10.0)
     ball.vx = (dx / MAX_POWER) * 5.5; // sideways aim
+    ball.rotV = -6 - power * 7;       // backspin, faster on harder throws
     ball.flying = true;
     aiming = false;
     window.SFX && window.SFX.eat && window.SFX.eat();
@@ -329,6 +393,7 @@
     resultText = clean ? 'SWISH! +' + (pts + bonus) : 'VÀO RỔ +' + (pts + bonus);
     resultColor = clean ? '#2f9e44' : '#1f7a34';
     resultFlash = 1.4;
+    netSwish = 1.0;                        // kick off the net ripple
     window.SFX && window.SFX.win && window.SFX.win();
   }
 
@@ -342,15 +407,42 @@
   }
 
   function stepBall(dt) {
-    if (!ball || !ball.flying || ball.done) return;
+    if (!ball) return;
+    // spin + squash relaxation happen even while the ball is idle/settling
+    ball.rot += ball.rotV * dt;
+    if (ball.squash > 0) ball.squash = Math.max(0, ball.squash - dt * 4);
+    if (!ball.flying || ball.done) return;
+
     const pz = ball.z;
     ball.vy += GRAV * dt;
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
     ball.z += ball.vz * dt;
 
-    // Check the rim plane crossing (ball moving away from camera through z).
-    if (!ball.scored && pz < HOOP.z && ball.z >= HOOP.z) {
+    // record a short motion trail (screen-space) for the streak effect
+    const tp = project(ball.x, ball.y, ball.z);
+    if (tp) { ball.trail.push({ x: tp.x, y: tp.y }); if (ball.trail.length > 7) ball.trail.shift(); }
+
+    // Backboard bounce — a bank shot. If the ball reaches the board plane
+    // within the board's bounds while still moving forward, it rebounds.
+    const BOARD_Z = HOOP.z + 0.45;
+    if (!ball.scored && pz < BOARD_Z && ball.z >= BOARD_Z && ball.vz > 0) {
+      const bxrel = ball.x - hoopX();
+      if (Math.abs(bxrel) < 0.78 && ball.y > HOOP.y - 0.15 && ball.y < HOOP.y + 1.1) {
+        ball.z = BOARD_Z - 0.001;
+        ball.vz *= -0.5;                 // bounce back off the glass
+        ball.vx *= 0.6;
+        ball.bankHit = true;
+        ball.touchedRim = true;          // bank shots don't count as clean swishes
+        ball.squash = 0.7; ball.squashDir = 0;
+        window.SFX && window.SFX.click && window.SFX.click();
+      }
+    }
+
+    // Check the rim plane crossing in EITHER direction — the ball can drop
+    // through going forward, or fall back down through it after a bank shot.
+    const crossedRim = (pz - HOOP.z) * (ball.z - HOOP.z) <= 0 && pz !== ball.z;
+    if (!ball.scored && crossedRim) {
       const t = (HOOP.z - pz) / (ball.z - pz || 1);
       const cxAt = ball.x - ball.vx * dt * (1 - t);
       const cyAt = ball.y - ball.vy * dt * (1 - t);
@@ -366,6 +458,7 @@
         // clipped the rim — bounce and mark as touched (no clean bonus)
         ball.touchedRim = true;
         ball.vz *= -0.45; ball.vx += dcx * 1.5; ball.vy *= 0.4;
+        ball.squash = 0.5; ball.squashDir = Math.atan2(dcy, dcx);
         window.SFX && window.SFX.click && window.SFX.click();
       }
     }
@@ -396,6 +489,7 @@
     hoopDrift = Math.sin(bob * 0.8) * amp;
     stepBall(dt);
     if (resultFlash > 0) resultFlash -= dt * 1.4;
+    if (netSwish > 0) netSwish = Math.max(0, netSwish - dt * 1.8);
     render();
     requestAnimationFrame(loop);
   }
