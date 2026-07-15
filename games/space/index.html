@@ -527,72 +527,93 @@
     if (st.flames >= 2) { drawFlame(-size * 0.24, size, 0.85); drawFlame(size * 0.24, size, 0.85); }
     else drawFlame(0, size, 1);
 
-    // swept wings (level 2+), drawn behind the fins/body
-    if (st.wing > 0) {
-      const w = st.wing;
-      const wg = ctx.createLinearGradient(-size, 0, size, 0);
-      wg.addColorStop(0, st.body[2]); wg.addColorStop(0.5, st.body[1]); wg.addColorStop(1, st.body[2]);
+    // --- Starfighter hull -----------------------------------------------
+    const span = 0.6 + st.wing * 0.7;            // wing reach grows with level
+    const edge = st.fin;                          // wing leading-edge trim
+    const acc  = st.win;                          // running-light / glass colour
+
+    // swept delta wings (behind the hull), with glowing wingtip lights
+    const wg = ctx.createLinearGradient(-size, 0, size, 0);
+    wg.addColorStop(0, st.body[2]); wg.addColorStop(0.5, st.body[1]); wg.addColorStop(1, st.body[2]);
+    for (const s of [-1, 1]) {
       ctx.fillStyle = wg;
       ctx.beginPath();
-      ctx.moveTo(-size * 0.32, size * 0.0);
-      ctx.lineTo(-size * (0.55 + 0.6 * w), size * 0.62);
-      ctx.lineTo(-size * (0.15 + 0.2 * w), size * 0.5);
+      ctx.moveTo(s * size * 0.24, -size * 0.08);
+      ctx.lineTo(s * size * span, size * 0.5);
+      ctx.lineTo(s * size * (span * 0.68), size * 0.62);
+      ctx.lineTo(s * size * 0.2, size * 0.48);
       ctx.closePath(); ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(size * 0.32, size * 0.0);
-      ctx.lineTo(size * (0.55 + 0.6 * w), size * 0.62);
-      ctx.lineTo(size * (0.15 + 0.2 * w), size * 0.5);
-      ctx.closePath(); ctx.fill();
-    }
-
-    // fins
-    ctx.fillStyle = st.fin;
-    ctx.beginPath();
-    ctx.moveTo(-size * 0.4, size * 0.5); ctx.lineTo(-size * 0.7, size * 0.7);
-    ctx.lineTo(-size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(size * 0.4, size * 0.5); ctx.lineTo(size * 0.7, size * 0.7);
-    ctx.lineTo(size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
-
-    // underside shadow for a rounder, 3D body
-    ctx.fillStyle = 'rgba(20,30,60,0.25)';
-    ctx.beginPath(); ctx.ellipse(0, size * 0.3, size * 0.42, size * 0.55, 0, 0, 7); ctx.fill();
-
-    // body with a left-light / right-shade gradient
-    const bg = ctx.createLinearGradient(-size * 0.5, 0, size * 0.5, 0);
-    bg.addColorStop(0, st.body[0]);
-    bg.addColorStop(0.45, st.body[1]);
-    bg.addColorStop(1, st.body[2]);
-    ctx.fillStyle = bg;
-    ctx.beginPath();
-    ctx.moveTo(0, -size * 0.9);
-    ctx.quadraticCurveTo(size * 0.5, -size * 0.1, size * 0.4, size * 0.55);
-    ctx.lineTo(-size * 0.4, size * 0.55);
-    ctx.quadraticCurveTo(-size * 0.5, -size * 0.1, 0, -size * 0.9);
-    ctx.closePath(); ctx.fill();
-
-    // glossy top highlight (3D sheen)
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.beginPath();
-    ctx.moveTo(-size * 0.06, -size * 0.85);
-    ctx.quadraticCurveTo(-size * 0.28, -size * 0.2, -size * 0.14, size * 0.3);
-    ctx.quadraticCurveTo(-size * 0.02, -size * 0.2, -size * 0.06, -size * 0.85);
-    ctx.closePath(); ctx.fill();
-
-    // energy core (level 2+): a pulsing glow set into the hull
-    if (st.core) {
-      const cr = size * (0.16 + 0.03 * Math.sin(elapsed * 8));
-      ctx.shadowColor = st.core; ctx.shadowBlur = size * 0.5;
-      ctx.fillStyle = st.core;
-      ctx.beginPath(); ctx.arc(0, size * 0.18, cr, 0, 7); ctx.fill();
+      ctx.strokeStyle = edge; ctx.lineWidth = size * 0.05;
+      ctx.beginPath(); ctx.moveTo(s * size * 0.24, -size * 0.08); ctx.lineTo(s * size * span, size * 0.5); ctx.stroke();
+      ctx.fillStyle = acc; ctx.shadowColor = acc; ctx.shadowBlur = size * 0.35;
+      ctx.beginPath(); ctx.arc(s * size * span, size * 0.5, size * 0.06, 0, 7); ctx.fill();
       ctx.shadowBlur = 0;
     }
 
-    // window / cockpit
-    ctx.fillStyle = st.win;
-    ctx.beginPath(); ctx.arc(0, -size * 0.15, size * 0.24, 0, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath(); ctx.arc(-size * 0.08, -size * 0.22, size * 0.09, 0, 7); ctx.fill();
+    // underside shadow for depth
+    ctx.fillStyle = 'rgba(15,22,50,0.3)';
+    ctx.beginPath(); ctx.ellipse(0, size * 0.36, size * 0.34, size * 0.62, 0, 0, 7); ctx.fill();
+
+    // angular dagger hull
+    const bg = ctx.createLinearGradient(-size * 0.45, 0, size * 0.45, 0);
+    bg.addColorStop(0, st.body[0]); bg.addColorStop(0.42, st.body[1]); bg.addColorStop(1, st.body[2]);
+    ctx.fillStyle = bg;
+    const hull = [[0, -1.08], [0.15, -0.5], [0.34, 0.06], [0.24, 0.55], [0.12, 0.66],
+                  [-0.12, 0.66], [-0.24, 0.55], [-0.34, 0.06], [-0.15, -0.5]];
+    ctx.beginPath();
+    hull.forEach((pt, i) => { const X = pt[0] * size, Y = pt[1] * size; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = size * 0.03; ctx.stroke();
+
+    // central spine sheen
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 1.0); ctx.lineTo(size * 0.07, size * 0.5); ctx.lineTo(-size * 0.07, size * 0.5);
+    ctx.closePath(); ctx.fill();
+
+    // hull panel lines
+    ctx.strokeStyle = 'rgba(20,30,60,0.35)'; ctx.lineWidth = Math.max(1, size * 0.02);
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * size * 0.2, -size * 0.35); ctx.lineTo(s * size * 0.26, size * 0.4); ctx.stroke();
+    }
+
+    // engine nozzle housings at the rear
+    ctx.fillStyle = '#2b3550';
+    const noz = st.flames >= 2 ? [-0.24, 0.24] : [0];
+    for (const nx of noz) {
+      ctx.beginPath();
+      ctx.moveTo(size * (nx - 0.1), size * 0.55); ctx.lineTo(size * (nx + 0.1), size * 0.55);
+      ctx.lineTo(size * (nx + 0.07), size * 0.68); ctx.lineTo(size * (nx - 0.07), size * 0.68);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // energy core (level 2+)
+    if (st.core) {
+      const cr = size * (0.13 + 0.03 * Math.sin(elapsed * 8));
+      ctx.shadowColor = st.core; ctx.shadowBlur = size * 0.5;
+      ctx.fillStyle = st.core;
+      ctx.beginPath(); ctx.arc(0, size * 0.2, cr, 0, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // elongated cockpit canopy near the nose
+    const cg = ctx.createLinearGradient(0, -size * 0.85, 0, -size * 0.1);
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.4, acc); cg.addColorStop(1, 'rgba(20,40,80,0.9)');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.82);
+    ctx.quadraticCurveTo(size * 0.15, -size * 0.5, size * 0.09, -size * 0.12);
+    ctx.lineTo(-size * 0.09, -size * 0.12);
+    ctx.quadraticCurveTo(-size * 0.15, -size * 0.5, 0, -size * 0.82);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.ellipse(-size * 0.03, -size * 0.5, size * 0.03, size * 0.16, 0.2, 0, 7); ctx.fill();
+
+    // nose-tip light
+    ctx.fillStyle = acc; ctx.shadowColor = acc; ctx.shadowBlur = size * 0.3;
+    ctx.beginPath(); ctx.arc(0, -size * 1.02, size * 0.05, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
 
     // active shield bubble
     if (shield) {
