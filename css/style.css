@@ -166,6 +166,7 @@ a { color: inherit; text-decoration: none; }
 .game-card.c6::before { background: linear-gradient(90deg, #ff9a5a, #65d36e); }
 .game-card.c7::before { background: linear-gradient(90deg, #65d36e, #ffd54f); }
 .game-card.c8::before { background: linear-gradient(90deg, #a78bfa, #4ec3ff); }
+.game-card.c9::before { background: linear-gradient(90deg, #ff9a5a, #ff6b9a); }
 .game-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-hover); }
 .game-card .icon { font-size: 48px; display: block; margin-top: 6px; }
 .game-card h3 { margin: 10px 0 4px; font-size: 22px; }
