@@ -448,10 +448,11 @@
   }
 
   function drawExplosion(ex) {
+    if (ex.age < 0) return;                 // staggered burst hasn't started yet
     const p = project(ex.x, ex.y, ex.z);
     if (!p) return;
-    const f = ex.age / ex.max;
-    const r = p.s * (0.08 + f * 0.42);
+    const f = Math.max(0, Math.min(1, ex.age / ex.max));
+    const r = Math.max(0, p.s * (0.08 + f * 0.42));
     ctx.save();
     ctx.globalAlpha = 1 - f;
     ctx.shadowColor = '#ffb14d'; ctx.shadowBlur = r;
