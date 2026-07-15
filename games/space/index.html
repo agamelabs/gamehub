@@ -937,8 +937,14 @@
     }
 
     const theme = stageTheme();
-    speed = (7 + Math.min(elapsed * 0.25, 9)) * theme.speedMul;   // stage-scaled
-    spawnGap = Math.max(0.28, (0.7 - elapsed * 0.006) / theme.spawnMul);
+    // Difficulty rises every stage and never resets when themes cycle. Each
+    // stage bumps base speed and asteroid density; tension also builds within
+    // a stage as its boss approaches (bossClock). The theme adds mild flavour.
+    const sd = Math.min(stageNum - 1, 14);                 // stage step, capped
+    const flavorSpd = 1 + (theme.speedMul - 1) * 0.5;
+    const flavorSpawn = 1 + (theme.spawnMul - 1) * 0.5;
+    speed = (7 + sd * 0.55 + Math.min(bossClock * 0.08, 1.5)) * flavorSpd;
+    spawnGap = Math.max(0.30, (0.72 - sd * 0.02 - bossClock * 0.003) / flavorSpawn);
     score += dt * 2;                               // small survival trickle
     scoreEl.textContent = Math.floor(score);
     if (elapsed > comboUntil) combo = 0;           // combo cools off
