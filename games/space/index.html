@@ -71,7 +71,7 @@
       </div>
     </div>
   </div>
-  <p class="space-hint">Kéo để lái · Tự bắn ☄️ · combo 🔥 nhân điểm · ⚡ súng · 🛡️ khiên · ⭐ +10 · hạ BOSS ☄️</p>
+  <p class="space-hint">Kéo để lái (vuốt theo hướng) · né sát ☄️ được thưởng · combo 🔥 · ⚡ súng · 🛡️ khiên · ⭐ +10 · BOSS</p>
 </main>
 
 <div class="modal" id="overModal">
@@ -722,9 +722,9 @@
 
     // ease ship toward its target position, and bank into turns
     const dx = ship.tx - ship.x, dy = ship.ty - ship.y;
-    ship.x += dx * Math.min(1, dt * 12);
-    ship.y += dy * Math.min(1, dt * 12);
-    ship.bank += (Math.max(-1, Math.min(1, dx * 2)) - ship.bank) * Math.min(1, dt * 8);
+    ship.x += dx * Math.min(1, dt * 15);
+    ship.y += dy * Math.min(1, dt * 15);
+    ship.bank += (Math.max(-1, Math.min(1, dx * 2.4)) - ship.bank) * Math.min(1, dt * 9);
 
     // engine trail puffs
     if (Math.random() < 0.6) {
@@ -849,6 +849,14 @@
           else if (loseLife()) return;
           continue;
         }
+        // near-miss "graze": squeaked past a rock → small reward + combo tick
+        if (o.kind === 'rock' && d < 1.7) {
+          bumpCombo();
+          addScore(2 * comboMult(), o.x, o.y, o.z, '#bff6ff');
+          burst(o.x, o.y, o.z, 4, '#bfe4ff', 1.4);
+          window.SFX && window.SFX.tone &&
+            window.SFX.tone({ freq: 1300, type: 'sine', dur: 0.05, vol: 0.06, glide: 1900 });
+        }
       }
       if (o.z < 0.6) objects.splice(i, 1);
     }
@@ -912,17 +920,30 @@
   }
 
   // --- Controls ---------------------------------------------------------
-  let dragging = false;
-  function pointerTo(e) {
+  // Relative dragging: the ship moves by however much your finger moves from
+  // where you first touched, so it never teleports under your thumb and stays
+  // in view — the natural feel used by most mobile shooters.
+  let dragging = false, refX = 0, refY = 0, baseX = 0, baseY = 0;
+  function pointerWorld(e) {
     const r = stage.getBoundingClientRect();
     const px = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
     const py = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-    const w = screenToShip(px, py);
-    ship.tx = Math.max(-X_MAX, Math.min(X_MAX, w.x));
-    ship.ty = Math.max(-Y_MAX, Math.min(Y_MAX, w.y));
+    return screenToShip(px, py);
   }
-  function onDown(e) { if (!running) return; dragging = true; pointerTo(e); e.preventDefault(); }
-  function onMove(e) { if (!running || !dragging) return; pointerTo(e); e.preventDefault(); }
+  function onDown(e) {
+    if (!running) return;
+    dragging = true;
+    const w = pointerWorld(e);
+    refX = w.x; refY = w.y; baseX = ship.tx; baseY = ship.ty;
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!running || !dragging) return;
+    const w = pointerWorld(e);
+    ship.tx = Math.max(-X_MAX, Math.min(X_MAX, baseX + (w.x - refX)));
+    ship.ty = Math.max(-Y_MAX, Math.min(Y_MAX, baseY + (w.y - refY)));
+    e.preventDefault();
+  }
   function onUp()    { dragging = false; }
   stage.addEventListener('mousedown', onDown);
   stage.addEventListener('mousemove', onMove);
