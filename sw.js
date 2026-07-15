@@ -2,7 +2,7 @@
 // Assets use stale-while-revalidate, so content auto-updates on the next
 // visit without needing a manual CACHE bump. (Bumping it still forces an
 // immediate full refresh if you ever want one.)
-const CACHE = 'gamehub-v2';
+const CACHE = 'gamehub-v3';
 
 // Paths are relative to the service worker's location (the site root),
 // so this works both at a domain root and under /gamehub/ on GitHub Pages.
