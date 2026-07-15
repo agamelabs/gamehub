@@ -66,12 +66,12 @@
       <div>
         <div style="font-size:64px">🚀</div>
         <h2>Bay vào vũ trụ!</h2>
-        <p>Kéo để lái — phi thuyền tự bắn 🔫 phá thiên thạch ☄️!<br />Nhặt ⚡ nâng cấp súng, nhặt ⭐ ăn điểm nha!</p>
+        <p>Kéo để lái — tự bắn 🔫 phá thiên thạch ☄️!<br />Nhặt ⚡ nâng súng, 🛡️ khiên, ⭐ ăn điểm.<br />Bắn combo 🔥 nhân điểm và hạ BOSS khổng lồ nha!</p>
         <button class="btn" id="startBtn">Bắt đầu</button>
       </div>
     </div>
   </div>
-  <p class="space-hint">Kéo để lái · Tự bắn phá ☄️ +5 · ⚡ nâng cấp súng · ⭐ +10 · Né kẻo mất ❤</p>
+  <p class="space-hint">Kéo để lái · Tự bắn ☄️ · combo 🔥 nhân điểm · ⚡ súng · 🛡️ khiên · ⭐ +10 · hạ BOSS ☄️</p>
 </main>
 
 <div class="modal" id="overModal">
@@ -148,14 +148,28 @@
   const ship = { x: 0, y: 1.0, tx: 0, ty: 1.0, bank: 0 };
   const objects = [];         // stars, asteroids & power-ups flying toward the camera
   const bgStars = [];         // decorative streaming starfield (no collision)
+  const planets = [];         // big soft planets drifting by for depth & colour
   const bullets = [];         // laser shots the ship fires forward (into +z)
-  const explosions = [];      // brief bursts when an asteroid is destroyed
+  const explosions = [];      // brief rings when an asteroid is destroyed
+  const particles = [];       // debris/sparkles thrown off by hits
+  const popups = [];          // floating "+N" score numbers
+  const trail = [];           // engine trail puffs behind the ship
 
   // Weapon upgrade: level 1 fires one shot, level 2 twin shots, level 3 a
   // three-way spread — and higher levels fire faster too. Collect ⚡ power-ups.
   let weaponLvl = 1;
   let fireClock = 0;
   const BULLET_VZ = 20;       // how fast a shot flies away from the camera
+
+  // Combo multiplier — chain pickups/kills within the window to score more.
+  let combo = 0, comboUntil = 0;
+  let shield = false;         // one-hit shield from a 🛡️ power-up
+  let boss = null;            // giant asteroid boss, or null
+  let bossClock = 0;          // counts up to the next boss appearance
+  const BOSS_EVERY = 24;      // seconds between bosses
+
+  function comboMult() { return 1 + Math.min(4, Math.floor(combo / 4)); }
+  function bumpCombo() { combo++; comboUntil = elapsed + 2.6; }
 
   function seedBackground() {
     bgStars.length = 0;
@@ -167,12 +181,25 @@
         w: 0.4 + Math.random() * 1.2,
       });
     }
+    planets.length = 0;
+    const hues = [275, 200, 330, 45];
+    for (let i = 0; i < 4; i++) {
+      planets.push({
+        x: (Math.random() * 2 - 1) * 8,
+        y: (Math.random() * 2 - 1) * 6,
+        z: 6 + Math.random() * (FAR_Z - 6),
+        r: 0.8 + Math.random() * 1.4,
+        hue: hues[i],
+        ring: Math.random() < 0.5,
+      });
+    }
   }
 
   function spawnObject() {
-    // ~10% weapon power-up, ~48% star, ~42% asteroid.
+    // weapon ⚡ 9%, shield 🛡️ 5%, star 44%, asteroid 42%.
     const roll = Math.random();
-    const kind = roll < 0.10 ? 'power' : roll < 0.58 ? 'star' : 'rock';
+    const kind = roll < 0.09 ? 'power' : roll < 0.14 ? 'shield'
+               : roll < 0.58 ? 'star' : 'rock';
     objects.push({
       kind,
       x: (Math.random() * 2 - 1) * X_MAX,
@@ -183,6 +210,34 @@
       hue: kind === 'star' ? 48 : 20 + Math.random() * 20,
       resolved: false,
     });
+  }
+
+  function spawnBoss() {
+    const hp = 8 + Math.floor(elapsed / 24) * 3;   // tougher each time
+    boss = {
+      x: 0, y: 0, z: FAR_Z, r: 1.5,
+      hp, maxHp: hp, spin: 0, hitFlash: 0, sway: Math.random() * 6,
+    };
+    pushPopup(0, -1.6, SHIP_Z + 2, 'BOSS! ☄️', '#ff5a5a', 1.6);
+    window.SFX && window.SFX.gameover && window.SFX.gameover();
+  }
+
+  // --- Juice: particles, popups, explosions -----------------------------
+  function burst(x, y, z, n, color, spread) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = (0.4 + Math.random()) * (spread || 3);
+      particles.push({
+        x, y, z,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        vz: (Math.random() * 2 - 1) * sp * 0.6 - speed * 0.25,
+        age: 0, max: 0.4 + Math.random() * 0.35,
+        color, size: 0.04 + Math.random() * 0.05,
+      });
+    }
+  }
+  function pushPopup(x, y, z, text, color, big) {
+    popups.push({ x, y, z, text, color, age: 0, max: 1.0, big: big || 1 });
   }
 
   function fire() {
@@ -286,6 +341,99 @@
     ctx.restore();
   }
 
+  // A soft glowing shield gem (🛡️ power-up).
+  function drawShieldGem(x, y, r, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(rot) * 0.2);
+    ctx.shadowColor = '#7fd0ff'; ctx.shadowBlur = r * 1.3;
+    const g = ctx.createLinearGradient(0, -r, 0, r);
+    g.addColorStop(0, '#d5ecff'); g.addColorStop(1, '#3f7fd8');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, -r);
+    ctx.quadraticCurveTo(r * 0.85, -r * 0.7, r * 0.85, 0);
+    ctx.quadraticCurveTo(r * 0.85, r * 0.8, 0, r * 1.05);
+    ctx.quadraticCurveTo(-r * 0.85, r * 0.8, -r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 0.85, -r * 0.7, 0, -r);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = Math.max(1, r * 0.12);
+    ctx.beginPath(); ctx.moveTo(0, -r * 0.5); ctx.lineTo(0, r * 0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-r * 0.45, 0); ctx.lineTo(r * 0.45, 0); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawParticle(pt) {
+    const p = project(pt.x, pt.y, pt.z);
+    if (!p) return;
+    const f = pt.age / pt.max;
+    const r = Math.max(0.6, p.s * pt.size * (1 - f * 0.5));
+    ctx.save();
+    ctx.globalAlpha = 1 - f;
+    ctx.fillStyle = pt.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPopup(pu) {
+    const p = project(pu.x, pu.y, pu.z);
+    if (!p) return;
+    const f = pu.age / pu.max;
+    ctx.save();
+    ctx.globalAlpha = 1 - f;
+    ctx.fillStyle = pu.color;
+    ctx.textAlign = 'center';
+    const fs = Math.round((15 * pu.big) * (1 + f * 0.3));
+    ctx.font = 'bold ' + fs + 'px ' + getComputedStyle(document.body).fontFamily;
+    ctx.fillText(pu.text, p.x, p.y - f * 42);
+    ctx.restore();
+  }
+
+  function drawPlanet(pl) {
+    const p = project(pl.x, pl.y, pl.z);
+    if (!p) return;
+    const r = p.s * pl.r * 0.5;
+    if (r < 2) return;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    if (pl.ring) {
+      ctx.strokeStyle = `hsla(${pl.hue}, 60%, 70%, 0.5)`;
+      ctx.lineWidth = Math.max(1, r * 0.12);
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, r * 1.5, r * 0.5, -0.4, 0, 7); ctx.stroke();
+    }
+    const g = ctx.createRadialGradient(p.x - r * 0.3, p.y - r * 0.3, r * 0.2, p.x, p.y, r);
+    g.addColorStop(0, `hsl(${pl.hue}, 65%, 68%)`);
+    g.addColorStop(1, `hsl(${pl.hue}, 55%, 32%)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBoss() {
+    if (!boss) return;
+    const p = project(boss.x, boss.y, boss.z);
+    if (!p) return;
+    const r = p.s * boss.r * 0.5;
+    ctx.save();
+    if (boss.hitFlash > 0) { ctx.shadowColor = '#fff'; ctx.shadowBlur = r * 0.6; }
+    drawAsteroid(p.x, p.y, r, boss.spin, 12);
+    // angry glowing eyes
+    ctx.fillStyle = boss.hitFlash > 0 ? '#fff' : '#ff5a3c';
+    ctx.shadowColor = '#ff5a3c'; ctx.shadowBlur = r * 0.3;
+    ctx.beginPath(); ctx.arc(p.x - r * 0.28, p.y - r * 0.12, r * 0.13, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x + r * 0.28, p.y - r * 0.12, r * 0.13, 0, 7); ctx.fill();
+    ctx.restore();
+    // health bar above the boss
+    const bw = Math.max(60, r * 2), bx = p.x - bw / 2, by = p.y - r - 16;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(bx - 2, by - 2, bw + 4, 10);
+    ctx.fillStyle = '#65d36e';
+    ctx.fillRect(bx, by, bw * Math.max(0, boss.hp / boss.maxHp), 6);
+    ctx.restore();
+  }
+
   function drawShip() {
     const p = project(ship.x, ship.y, SHIP_Z);
     const size = p.s * 0.42;
@@ -329,6 +477,14 @@
     ctx.beginPath(); ctx.arc(0, -size * 0.15, size * 0.24, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.beginPath(); ctx.arc(-size * 0.08, -size * 0.22, size * 0.09, 0, 7); ctx.fill();
+    // active shield bubble
+    if (shield) {
+      ctx.rotate(-ship.bank * 0.5);
+      ctx.strokeStyle = `hsla(205, 100%, 70%, ${0.55 + 0.25 * Math.sin(elapsed * 6)})`;
+      ctx.lineWidth = size * 0.12;
+      ctx.shadowColor = '#7fd0ff'; ctx.shadowBlur = size * 0.6;
+      ctx.beginPath(); ctx.arc(0, 0, size * 1.35, 0, 7); ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -342,6 +498,10 @@
     ctx.save();
     ctx.translate(ox, oy);
 
+    // drifting planets sit farthest back
+    const sortedPlanets = planets.slice().sort((a, b) => b.z - a.z);
+    for (const pl of sortedPlanets) drawPlanet(pl);
+
     // streaming background stars
     for (const s of bgStars) {
       const p = project(s.x, s.y, s.z);
@@ -353,6 +513,9 @@
     }
     ctx.globalAlpha = 1;
 
+    // boss sits behind the near objects
+    drawBoss();
+
     // objects, far ones first so near ones overlap them
     const sorted = objects.slice().sort((a, b) => b.z - a.z);
     for (const o of sorted) {
@@ -361,23 +524,47 @@
         drawStarShape(p.x, p.y, p.s * 0.16, o.spin, '#ffd54f', '#ffe98a');
       } else if (o.kind === 'power') {
         drawPowerup(p.x, p.y, p.s * 0.17, o.spin);
+      } else if (o.kind === 'shield') {
+        drawShieldGem(p.x, p.y, p.s * 0.17, o.spin);
       } else {
         drawAsteroid(p.x, p.y, p.s * 0.2, o.spin, o.hue);
       }
     }
 
-    // explosions, then bullets (bright overlays), then the ship on top
+    // engine trail puffs behind the ship
+    for (const tr of trail) {
+      const p = project(tr.x, tr.y, tr.z);
+      if (!p) continue;
+      const f = tr.age / tr.max;
+      ctx.save();
+      ctx.globalAlpha = (1 - f) * 0.5;
+      ctx.fillStyle = f < 0.5 ? '#ffd36b' : '#ff7a3c';
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(1, p.s * 0.06 * (1 + f)), 0, 7); ctx.fill();
+      ctx.restore();
+    }
+
+    // particles, explosions, bullets (bright overlays), popups, then the ship
+    for (const pt of particles) drawParticle(pt);
     for (const ex of explosions) drawExplosion(ex);
     for (const b of bullets) drawBullet(b);
+    for (const pu of popups) drawPopup(pu);
     drawShip();
     ctx.restore();
 
-    // weapon level indicator (fixed, not affected by screen shake)
+    // HUD (fixed, not affected by screen shake)
     ctx.save();
     ctx.font = 'bold 14px ' + getComputedStyle(document.body).fontFamily;
     ctx.textAlign = 'left';
     ctx.fillStyle = weaponLvl >= 3 ? '#ffd54f' : '#8affff';
-    ctx.fillText('🔫 Súng Lv ' + weaponLvl + (weaponLvl >= 3 ? ' MAX' : ''), 12, H - 12);
+    ctx.fillText('🔫 Lv ' + weaponLvl + (weaponLvl >= 3 ? ' MAX' : ''), 12, H - 12);
+    if (shield) { ctx.fillStyle = '#7fd0ff'; ctx.fillText('🛡️', 92, H - 12); }
+    // combo banner
+    if (elapsed < comboUntil && comboMult() > 1) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffbe3c';
+      ctx.font = 'bold 20px ' + getComputedStyle(document.body).fontFamily;
+      ctx.fillText('COMBO x' + comboMult() + ' 🔥', W / 2, 30);
+    }
     ctx.restore();
   }
 
@@ -391,12 +578,30 @@
     );
   }
 
+  function addScore(pts, x, y, z, color) {
+    score += pts;
+    scoreEl.textContent = Math.floor(score);
+    pushPopup(x, y, z, '+' + pts, color || '#fff');
+  }
+
+  function loseLife() {
+    lives--;
+    livesEl.textContent = lives;
+    combo = 0;
+    window.SFX && window.SFX.wrong();
+    hitFlash(false);
+    shakeUntil = elapsed + 0.3;
+    if (lives <= 0) { end(); return true; }
+    return false;
+  }
+
   function update(dt) {
     elapsed += dt;
     speed = 7 + Math.min(elapsed * 0.25, 9);      // gently ramps toward 16
     spawnGap = Math.max(0.32, 0.7 - elapsed * 0.006);
     score += dt * 2;                               // small survival trickle
     scoreEl.textContent = Math.floor(score);
+    if (elapsed > comboUntil) combo = 0;           // combo cools off
 
     // ease ship toward its target position, and bank into turns
     const dx = ship.tx - ship.x, dy = ship.ty - ship.y;
@@ -404,19 +609,36 @@
     ship.y += dy * Math.min(1, dt * 12);
     ship.bank += (Math.max(-1, Math.min(1, dx * 2)) - ship.bank) * Math.min(1, dt * 8);
 
-    // background streaming
+    // engine trail puffs
+    if (Math.random() < 0.6) {
+      trail.push({ x: ship.x + (Math.random() - 0.5) * 0.2, y: ship.y + 0.5, z: SHIP_Z,
+                   age: 0, max: 0.35 });
+    }
+    for (let i = trail.length - 1; i >= 0; i--) {
+      trail[i].age += dt; trail[i].z += speed * 0.15 * dt;
+      if (trail[i].age >= trail[i].max) trail.splice(i, 1);
+    }
+
+    // background streaming (stars + planets)
     for (const s of bgStars) {
       s.z -= speed * dt;
-      if (s.z < 0.6) {
-        s.z = FAR_Z;
-        s.x = (Math.random() * 2 - 1) * 9;
-        s.y = (Math.random() * 2 - 1) * 9;
+      if (s.z < 0.6) { s.z = FAR_Z; s.x = (Math.random() * 2 - 1) * 9; s.y = (Math.random() * 2 - 1) * 9; }
+    }
+    for (const pl of planets) {
+      pl.z -= speed * 0.35 * dt;                   // planets drift slower (parallax)
+      if (pl.z < 0.6) {
+        pl.z = FAR_Z; pl.x = (Math.random() * 2 - 1) * 8; pl.y = (Math.random() * 2 - 1) * 6;
+        pl.hue = [275, 200, 330, 45][Math.floor(Math.random() * 4)];
       }
     }
 
-    // spawn
+    // spawn regular objects (paused while a boss is on screen)
     spawnClock += dt;
-    if (spawnClock >= spawnGap) { spawnClock = 0; spawnObject(); }
+    if (!boss && spawnClock >= spawnGap) { spawnClock = 0; spawnObject(); }
+
+    // boss scheduling
+    bossClock += dt;
+    if (!boss && bossClock >= BOSS_EVERY) { bossClock = 0; spawnBoss(); }
 
     // auto-fire — faster at higher weapon levels
     fireClock += dt;
@@ -431,6 +653,35 @@
       if (b.z > FAR_Z + 1) bullets.splice(i, 1);
     }
 
+    // move particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const pt = particles[i];
+      pt.age += dt;
+      pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.z += pt.vz * dt;
+      if (pt.age >= pt.max || pt.z < 0.4) particles.splice(i, 1);
+    }
+    // age popups
+    for (let i = popups.length - 1; i >= 0; i--) {
+      popups[i].age += dt * 1.2;
+      if (popups[i].age >= popups[i].max) popups.splice(i, 1);
+    }
+
+    // boss movement & arrival
+    if (boss) {
+      boss.z -= speed * 0.4 * dt;
+      boss.sway += dt;
+      boss.x = Math.sin(boss.sway * 0.9) * (X_MAX * 0.7);
+      boss.y = Math.cos(boss.sway * 0.6) * (Y_MAX * 0.4);
+      boss.spin += dt * 0.6;
+      if (boss.hitFlash > 0) boss.hitFlash -= dt;
+      if (boss.z <= SHIP_Z) {          // it reached us — costs a life (or shield)
+        burst(boss.x, boss.y, SHIP_Z, 18, '#ff8a3c', 4);
+        boss = null; bossClock = 0;
+        if (shield) { shield = false; shakeUntil = elapsed + 0.25; }
+        else if (loseLife()) return;
+      }
+    }
+
     // move objects & resolve collisions when they reach the ship plane
     for (let i = objects.length - 1; i >= 0; i--) {
       const o = objects[i];
@@ -440,9 +691,10 @@
         o.resolved = true;
         const d = Math.hypot(o.x - ship.x, o.y - ship.y);
         if (o.kind === 'star' && d < 0.95) {
-          starCount++; score += 10;
-          starsEl.textContent = starCount;
-          scoreEl.textContent = Math.floor(score);
+          bumpCombo();
+          starCount++; starsEl.textContent = starCount;
+          addScore(10 * comboMult(), o.x, o.y, o.z, '#ffe98a');
+          burst(o.x, o.y, o.z, 8, '#ffe27a', 2.2);
           window.SFX && window.SFX.eat();
           hitFlash(true);
           objects.splice(i, 1);
@@ -451,47 +703,77 @@
         if (o.kind === 'power' && d < 1.05) {
           if (weaponLvl < 3) {
             weaponLvl++;
+            pushPopup(o.x, o.y, o.z, 'SÚNG Lv ' + weaponLvl + '!', '#8affff', 1.2);
             window.SFX && window.SFX.match && window.SFX.match();
           } else {
-            score += 15;
-            scoreEl.textContent = Math.floor(score);
+            addScore(15 * comboMult(), o.x, o.y, o.z, '#8affff');
             window.SFX && window.SFX.eat();
           }
+          burst(o.x, o.y, o.z, 10, '#9dfcff', 2.5);
+          hitFlash(true);
+          objects.splice(i, 1);
+          continue;
+        }
+        if (o.kind === 'shield' && d < 1.05) {
+          shield = true;
+          pushPopup(o.x, o.y, o.z, 'KHIÊN 🛡️', '#7fd0ff', 1.2);
+          burst(o.x, o.y, o.z, 10, '#bfe4ff', 2.5);
+          window.SFX && window.SFX.match && window.SFX.match();
           hitFlash(true);
           objects.splice(i, 1);
           continue;
         }
         if (o.kind === 'rock' && d < 0.82) {
-          lives--;
-          livesEl.textContent = lives;
-          window.SFX && window.SFX.wrong();
-          hitFlash(false);
-          shakeUntil = elapsed + 0.3;
+          burst(o.x, o.y, o.z, 12, '#c98a5a', 3);
           objects.splice(i, 1);
-          if (lives <= 0) { end(); return; }
+          if (shield) { shield = false; shakeUntil = elapsed + 0.25; window.SFX && window.SFX.pop(); }
+          else if (loseLife()) return;
           continue;
         }
       }
       if (o.z < 0.6) objects.splice(i, 1);
     }
 
-    // bullets vs asteroids — a hit destroys the rock and scores
+    // bullets vs asteroids & boss
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
+      let hit = false;
+      // boss first
+      if (boss && Math.abs(b.z - boss.z) < 1.6 && Math.hypot(b.x - boss.x, b.y - boss.y) < 1.3) {
+        boss.hp--; boss.hitFlash = 0.12;
+        burst(b.x, b.y, b.z, 3, '#ffd36b', 1.8);
+        bullets.splice(i, 1);
+        if (boss.hp <= 0) {
+          bumpCombo();
+          burst(boss.x, boss.y, boss.z, 26, '#ff9a3c', 5);
+          explosions.push({ x: boss.x, y: boss.y, z: boss.z, age: 0, max: 0.5 });
+          addScore(60 * comboMult(), boss.x, boss.y, boss.z, '#ffd54f');
+          // guaranteed weapon drop from the wreck
+          objects.push({ kind: weaponLvl < 3 ? 'power' : 'shield',
+            x: boss.x, y: boss.y, z: boss.z, spin: 0, spinV: 1, hue: 40, resolved: false });
+          window.SFX && window.SFX.win && window.SFX.win();
+          shakeUntil = elapsed + 0.35;
+          boss = null; bossClock = 0;
+        }
+        continue;
+      }
       for (let j = objects.length - 1; j >= 0; j--) {
         const o = objects[j];
         if (o.kind !== 'rock' || o.resolved) continue;
         if (Math.abs(b.z - o.z) < 1.4 && Math.hypot(b.x - o.x, b.y - o.y) < 0.85) {
+          bumpCombo();
           o.resolved = true;
           explosions.push({ x: o.x, y: o.y, z: o.z, age: 0, max: 0.4 });
-          score += 5;
-          scoreEl.textContent = Math.floor(score);
+          burst(o.x, o.y, o.z, 9, `hsl(${o.hue}, 40%, 55%)`, 3);
+          addScore(5 * comboMult(), o.x, o.y, o.z, '#ffd36b');
           window.SFX && window.SFX.pop && window.SFX.pop();
           objects.splice(j, 1);
           bullets.splice(i, 1);
+          hit = true;
           break;
         }
       }
+      if (hit) continue;
     }
 
     // age out explosions
@@ -553,10 +835,15 @@
     speed = 7; elapsed = 0; spawnClock = 0; spawnGap = 0.7;
     shakeUntil = 0;
     weaponLvl = 1; fireClock = 0;
+    combo = 0; comboUntil = 0; shield = false;
+    boss = null; bossClock = 0;
     ship.x = ship.tx = 0; ship.y = ship.ty = 1.0; ship.bank = 0;
     objects.length = 0;
     bullets.length = 0;
     explosions.length = 0;
+    particles.length = 0;
+    popups.length = 0;
+    trail.length = 0;
     seedBackground();
     scoreEl.textContent = '0';
     starsEl.textContent = '0';
