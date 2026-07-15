@@ -66,12 +66,12 @@
       <div>
         <div style="font-size:64px">🚀</div>
         <h2>Bay vào vũ trụ!</h2>
-        <p>Kéo hoặc vuốt để lái phi thuyền.<br />Nhặt sao ⭐ ăn điểm, né thiên thạch ☄️ nha!</p>
+        <p>Kéo để lái — phi thuyền tự bắn 🔫 phá thiên thạch ☄️!<br />Nhặt ⚡ nâng cấp súng, nhặt ⭐ ăn điểm nha!</p>
         <button class="btn" id="startBtn">Bắt đầu</button>
       </div>
     </div>
   </div>
-  <p class="space-hint">Kéo màn hình để lái · ⭐ +10 điểm · Né ☄️ kẻo mất tim ❤</p>
+  <p class="space-hint">Kéo để lái · Tự bắn phá ☄️ +5 · ⚡ nâng cấp súng · ⭐ +10 · Né kẻo mất ❤</p>
 </main>
 
 <div class="modal" id="overModal">
@@ -146,8 +146,16 @@
   let shakeUntil = 0;
 
   const ship = { x: 0, y: 1.0, tx: 0, ty: 1.0, bank: 0 };
-  const objects = [];         // stars & asteroids flying toward the camera
+  const objects = [];         // stars, asteroids & power-ups flying toward the camera
   const bgStars = [];         // decorative streaming starfield (no collision)
+  const bullets = [];         // laser shots the ship fires forward (into +z)
+  const explosions = [];      // brief bursts when an asteroid is destroyed
+
+  // Weapon upgrade: level 1 fires one shot, level 2 twin shots, level 3 a
+  // three-way spread — and higher levels fire faster too. Collect ⚡ power-ups.
+  let weaponLvl = 1;
+  let fireClock = 0;
+  const BULLET_VZ = 20;       // how fast a shot flies away from the camera
 
   function seedBackground() {
     bgStars.length = 0;
@@ -162,17 +170,32 @@
   }
 
   function spawnObject() {
-    const isStar = Math.random() < 0.62;
+    // ~10% weapon power-up, ~48% star, ~42% asteroid.
+    const roll = Math.random();
+    const kind = roll < 0.10 ? 'power' : roll < 0.58 ? 'star' : 'rock';
     objects.push({
-      star: isStar,
+      kind,
       x: (Math.random() * 2 - 1) * X_MAX,
       y: (Math.random() * 2 - 1) * Y_MAX,
       z: FAR_Z,
       spin: Math.random() * Math.PI * 2,
       spinV: (Math.random() * 2 - 1) * 2.5,
-      hue: isStar ? 48 : 20 + Math.random() * 20,
+      hue: kind === 'star' ? 48 : 20 + Math.random() * 20,
       resolved: false,
     });
+  }
+
+  function fire() {
+    const bz = SHIP_Z + 0.3;
+    // each entry is [x offset, sideways velocity] so level 3 fans out
+    const shots = weaponLvl >= 3 ? [[-0.34, -1.3], [0, 0], [0.34, 1.3]]
+                : weaponLvl === 2 ? [[-0.26, 0], [0.26, 0]]
+                : [[0, 0]];
+    for (const [ox, vx] of shots) {
+      bullets.push({ x: ship.x + ox, y: ship.y, z: bz, vx });
+    }
+    // soft laser blip — kept quiet so rapid fire doesn't grate
+    window.SFX && window.SFX.tone && window.SFX.tone({ freq: 900, type: 'square', dur: 0.05, vol: 0.05, glide: 1500 });
   }
 
   // --- Drawing helpers --------------------------------------------------
@@ -213,6 +236,53 @@
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath(); ctx.arc(-r * 0.2, -r * 0.15, r * 0.22, 0, 7); ctx.fill();
     ctx.beginPath(); ctx.arc(r * 0.28, r * 0.2, r * 0.15, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  // A glowing cyan gem with a lightning bolt — the weapon power-up.
+  function drawPowerup(x, y, r, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(rot) * 0.25);
+    ctx.shadowColor = '#5ef2ff'; ctx.shadowBlur = r * 1.3;
+    const g = ctx.createLinearGradient(0, -r, 0, r);
+    g.addColorStop(0, '#9dfcff'); g.addColorStop(1, '#1aa3d6');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.92, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fffbe6';
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.12, -r * 0.6); ctx.lineTo(r * 0.34, -r * 0.08);
+    ctx.lineTo(r * 0.06, -r * 0.08); ctx.lineTo(r * 0.22, r * 0.6);
+    ctx.lineTo(-r * 0.34, -r * 0.02); ctx.lineTo(-r * 0.04, -r * 0.02);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBullet(b) {
+    const p = project(b.x, b.y, b.z);
+    if (!p) return;
+    const r = Math.max(1.5, p.s * 0.05);
+    ctx.save();
+    ctx.shadowColor = '#7dffea'; ctx.shadowBlur = r * 3;
+    ctx.fillStyle = '#c6fff2';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r * 2.4, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawExplosion(ex) {
+    const p = project(ex.x, ex.y, ex.z);
+    if (!p) return;
+    const f = ex.age / ex.max;
+    const r = p.s * (0.08 + f * 0.42);
+    ctx.save();
+    ctx.globalAlpha = 1 - f;
+    ctx.shadowColor = '#ffb14d'; ctx.shadowBlur = r;
+    ctx.fillStyle = '#ffd36b';
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+    ctx.globalAlpha = (1 - f) * 0.7;
+    ctx.strokeStyle = '#ff8a3c'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.7, 0, 7); ctx.stroke();
     ctx.restore();
   }
 
@@ -287,15 +357,27 @@
     const sorted = objects.slice().sort((a, b) => b.z - a.z);
     for (const o of sorted) {
       const p = project(o.x, o.y, o.z);
-      const r = p.s * (o.star ? 0.16 : 0.2);
-      if (o.star) {
-        drawStarShape(p.x, p.y, r, o.spin, '#ffd54f', '#ffe98a');
+      if (o.kind === 'star') {
+        drawStarShape(p.x, p.y, p.s * 0.16, o.spin, '#ffd54f', '#ffe98a');
+      } else if (o.kind === 'power') {
+        drawPowerup(p.x, p.y, p.s * 0.17, o.spin);
       } else {
-        drawAsteroid(p.x, p.y, r, o.spin, o.hue);
+        drawAsteroid(p.x, p.y, p.s * 0.2, o.spin, o.hue);
       }
     }
 
+    // explosions, then bullets (bright overlays), then the ship on top
+    for (const ex of explosions) drawExplosion(ex);
+    for (const b of bullets) drawBullet(b);
     drawShip();
+    ctx.restore();
+
+    // weapon level indicator (fixed, not affected by screen shake)
+    ctx.save();
+    ctx.font = 'bold 14px ' + getComputedStyle(document.body).fontFamily;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = weaponLvl >= 3 ? '#ffd54f' : '#8affff';
+    ctx.fillText('🔫 Súng Lv ' + weaponLvl + (weaponLvl >= 3 ? ' MAX' : ''), 12, H - 12);
     ctx.restore();
   }
 
@@ -336,6 +418,19 @@
     spawnClock += dt;
     if (spawnClock >= spawnGap) { spawnClock = 0; spawnObject(); }
 
+    // auto-fire — faster at higher weapon levels
+    fireClock += dt;
+    const fireGap = weaponLvl >= 3 ? 0.16 : weaponLvl === 2 ? 0.2 : 0.26;
+    if (fireClock >= fireGap) { fireClock = 0; fire(); }
+
+    // move bullets forward (away from the camera); drop ones that fly off
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.z += BULLET_VZ * dt;
+      b.x += (b.vx || 0) * dt;
+      if (b.z > FAR_Z + 1) bullets.splice(i, 1);
+    }
+
     // move objects & resolve collisions when they reach the ship plane
     for (let i = objects.length - 1; i >= 0; i--) {
       const o = objects[i];
@@ -344,7 +439,7 @@
       if (!o.resolved && o.z <= SHIP_Z) {
         o.resolved = true;
         const d = Math.hypot(o.x - ship.x, o.y - ship.y);
-        if (o.star && d < 0.95) {
+        if (o.kind === 'star' && d < 0.95) {
           starCount++; score += 10;
           starsEl.textContent = starCount;
           scoreEl.textContent = Math.floor(score);
@@ -353,7 +448,20 @@
           objects.splice(i, 1);
           continue;
         }
-        if (!o.star && d < 0.82) {
+        if (o.kind === 'power' && d < 1.05) {
+          if (weaponLvl < 3) {
+            weaponLvl++;
+            window.SFX && window.SFX.match && window.SFX.match();
+          } else {
+            score += 15;
+            scoreEl.textContent = Math.floor(score);
+            window.SFX && window.SFX.eat();
+          }
+          hitFlash(true);
+          objects.splice(i, 1);
+          continue;
+        }
+        if (o.kind === 'rock' && d < 0.82) {
           lives--;
           livesEl.textContent = lives;
           window.SFX && window.SFX.wrong();
@@ -365,6 +473,31 @@
         }
       }
       if (o.z < 0.6) objects.splice(i, 1);
+    }
+
+    // bullets vs asteroids — a hit destroys the rock and scores
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      for (let j = objects.length - 1; j >= 0; j--) {
+        const o = objects[j];
+        if (o.kind !== 'rock' || o.resolved) continue;
+        if (Math.abs(b.z - o.z) < 1.4 && Math.hypot(b.x - o.x, b.y - o.y) < 0.85) {
+          o.resolved = true;
+          explosions.push({ x: o.x, y: o.y, z: o.z, age: 0, max: 0.4 });
+          score += 5;
+          scoreEl.textContent = Math.floor(score);
+          window.SFX && window.SFX.pop && window.SFX.pop();
+          objects.splice(j, 1);
+          bullets.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    // age out explosions
+    for (let i = explosions.length - 1; i >= 0; i--) {
+      explosions[i].age += dt;
+      if (explosions[i].age >= explosions[i].max) explosions.splice(i, 1);
     }
   }
 
@@ -419,8 +552,11 @@
     score = 0; starCount = 0; lives = 3;
     speed = 7; elapsed = 0; spawnClock = 0; spawnGap = 0.7;
     shakeUntil = 0;
+    weaponLvl = 1; fireClock = 0;
     ship.x = ship.tx = 0; ship.y = ship.ty = 1.0; ship.bank = 0;
     objects.length = 0;
+    bullets.length = 0;
+    explosions.length = 0;
     seedBackground();
     scoreEl.textContent = '0';
     starsEl.textContent = '0';
