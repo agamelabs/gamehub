@@ -66,12 +66,12 @@
       <div>
         <div style="font-size:64px">🚀</div>
         <h2>Bay vào vũ trụ!</h2>
-        <p>Kéo để lái — tự bắn 🔫 phá thiên thạch ☄️!<br />Nhặt ⚡ nâng súng, 🛡️ khiên, ⭐ ăn điểm.<br />Bắn combo 🔥 nhân điểm và hạ BOSS khổng lồ nha!</p>
+        <p>Kéo để lái — tự bắn 🔫 phá thiên thạch ☄️!<br />⚡ nâng súng (Lv3 có drone hộ tống), 🛡️ khiên, 💥 NOVA quét sạch màn hình.<br />Combo cao vào chế độ 🔥 ON FIRE, hạ BOSS khổng lồ nha!</p>
         <button class="btn" id="startBtn">Bắt đầu</button>
       </div>
     </div>
   </div>
-  <p class="space-hint">Kéo để lái (vuốt theo hướng) · né sát ☄️ được thưởng · combo 🔥 · ⚡ súng · 🛡️ khiên · ⭐ +10 · BOSS</p>
+  <p class="space-hint">Kéo để lái · né sát ☄️ thưởng · combo 🔥 ON FIRE · ⚡ súng+drone · 🛡️ khiên · 💥 NOVA · ⭐ +10 · BOSS</p>
 </main>
 
 <div class="modal" id="overModal">
@@ -154,6 +154,11 @@
   const particles = [];       // debris/sparkles thrown off by hits
   const popups = [];          // floating "+N" score numbers
   const trail = [];           // engine trail puffs behind the ship
+  const nebula = [];          // soft glowing cloud blobs in the deep background
+  const drones = [];          // wingman drones that flank & fire at level 3
+
+  let warp = 0;               // seconds of hyperspace intro left at game start
+  let novaFlash = -99;        // time a NOVA screen-clear was triggered
 
   // Weapon upgrade: level 1 fires one shot, level 2 twin shots, level 3 a
   // three-way spread — and higher levels fire faster too. Collect ⚡ power-ups.
@@ -204,13 +209,26 @@
         ring: Math.random() < 0.5,
       });
     }
+    // deep glowing nebula clouds (screen-space, slow parallax drift)
+    nebula.length = 0;
+    const nhues = [268, 200, 320, 175];
+    for (let i = 0; i < 4; i++) {
+      nebula.push({
+        fx: 0.15 + Math.random() * 0.7,   // fraction of width
+        fy: 0.1 + Math.random() * 0.8,    // fraction of height
+        r: 0.35 + Math.random() * 0.35,   // fraction of min(W,H)
+        hue: nhues[i],
+        drift: (Math.random() * 2 - 1) * 0.02,
+        phase: i * 1.7,
+      });
+    }
   }
 
   function spawnObject() {
-    // weapon ⚡ 9%, shield 🛡️ 5%, star 44%, asteroid 42%.
+    // weapon ⚡ 9%, shield 🛡️ 5%, NOVA 💥 3%, star 41%, asteroid 42%.
     const roll = Math.random();
     const kind = roll < 0.09 ? 'power' : roll < 0.14 ? 'shield'
-               : roll < 0.58 ? 'star' : 'rock';
+               : roll < 0.17 ? 'nova' : roll < 0.58 ? 'star' : 'rock';
     objects.push({
       kind,
       x: (Math.random() * 2 - 1) * X_MAX,
@@ -260,8 +278,33 @@
     for (const [ox, vx] of shots) {
       bullets.push({ x: ship.x + ox, y: ship.y, z: bz, vx });
     }
+    // wingman drones add their own straight shots
+    for (const d of drones) bullets.push({ x: d.x, y: d.y, z: bz, vx: 0 });
     // soft laser blip — kept quiet so rapid fire doesn't grate
     window.SFX && window.SFX.tone && window.SFX.tone({ freq: 900, type: 'square', dur: 0.05, vol: 0.05, glide: 1500 });
+  }
+
+  function triggerNova() {
+    novaFlash = elapsed;
+    shakeUntil = elapsed + 0.5;
+    let cleared = 0;
+    for (let i = objects.length - 1; i >= 0; i--) {
+      if (objects[i].kind === 'rock') {
+        burst(objects[i].x, objects[i].y, objects[i].z, 10, '#bff6ff', 4);
+        objects.splice(i, 1); cleared++;
+      }
+    }
+    if (boss) {
+      boss.hp -= 6; boss.hitFlash = 0.2;
+      burst(boss.x, boss.y, boss.z, 20, '#bff6ff', 5);
+      if (boss.hp <= 0) {
+        addScore(60 * comboMult(), boss.x, boss.y, boss.z, '#ffd54f');
+        boss = null; bossClock = 0;
+      }
+    }
+    if (cleared) { bumpCombo(); addScore(cleared * 6, ship.x, ship.y - 0.6, SHIP_Z, '#bff6ff'); }
+    pushPopup(ship.x, ship.y - 1.0, SHIP_Z, '💥 NOVA!', '#bff6ff', 1.6);
+    window.SFX && window.SFX.win && window.SFX.win();
   }
 
   // --- Drawing helpers --------------------------------------------------
@@ -373,6 +416,62 @@
     ctx.beginPath(); ctx.moveTo(0, -r * 0.5); ctx.lineTo(0, r * 0.5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-r * 0.45, 0); ctx.lineTo(r * 0.45, 0); ctx.stroke();
     ctx.restore();
+  }
+
+  // NOVA smart-bomb pickup — a pulsing white-hot star burst gem.
+  function drawNovaGem(x, y, r, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.shadowColor = '#bff6ff'; ctx.shadowBlur = r * 1.6;
+    const g = ctx.createRadialGradient(0, 0, r * 0.1, 0, 0, r);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#bff6ff'); g.addColorStop(1, '#4aa8ff');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const rad = (i % 2 === 0) ? r : r * 0.42;
+      const a = (Math.PI / 8) * i;
+      const px = Math.cos(a) * rad, py = Math.sin(a) * rad;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawDrone(d, size) {
+    const p = project(d.x, d.y, SHIP_Z);
+    if (!p) return;
+    const s = size * 0.42;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.shadowColor = '#8affff'; ctx.shadowBlur = s * 0.6;
+    ctx.fillStyle = '#dff6ff';
+    ctx.beginPath();
+    ctx.moveTo(0, -s); ctx.lineTo(s * 0.55, s * 0.6); ctx.lineTo(-s * 0.55, s * 0.6);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#3fb0ff';
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.22, 0, 7); ctx.fill();
+    // tiny thruster
+    ctx.fillStyle = 'rgba(255,180,80,0.8)';
+    ctx.beginPath(); ctx.moveTo(-s * 0.2, s * 0.6); ctx.lineTo(0, s * (0.9 + 0.2 * Math.sin(elapsed * 25)));
+    ctx.lineTo(s * 0.2, s * 0.6); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // Deep nebula clouds painted in screen space behind everything.
+  function drawNebula() {
+    for (const n of nebula) {
+      const cx0 = (n.fx + Math.sin(elapsed * 0.05 + n.phase) * 0.03) * W;
+      const cy0 = n.fy * H;
+      const rr = n.r * Math.min(W, H);
+      const g = ctx.createRadialGradient(cx0, cy0, 0, cx0, cy0, rr);
+      g.addColorStop(0, `hsla(${n.hue}, 70%, 55%, 0.22)`);
+      g.addColorStop(0.5, `hsla(${n.hue}, 70%, 45%, 0.10)`);
+      g.addColorStop(1, `hsla(${n.hue}, 70%, 40%, 0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(cx0 - rr, cy0 - rr, rr * 2, rr * 2);
+    }
   }
 
   function drawParticle(pt) {
@@ -527,72 +626,93 @@
     if (st.flames >= 2) { drawFlame(-size * 0.24, size, 0.85); drawFlame(size * 0.24, size, 0.85); }
     else drawFlame(0, size, 1);
 
-    // swept wings (level 2+), drawn behind the fins/body
-    if (st.wing > 0) {
-      const w = st.wing;
-      const wg = ctx.createLinearGradient(-size, 0, size, 0);
-      wg.addColorStop(0, st.body[2]); wg.addColorStop(0.5, st.body[1]); wg.addColorStop(1, st.body[2]);
+    // --- Starfighter hull -----------------------------------------------
+    const span = 0.6 + st.wing * 0.7;            // wing reach grows with level
+    const edge = st.fin;                          // wing leading-edge trim
+    const acc  = st.win;                          // running-light / glass colour
+
+    // swept delta wings (behind the hull), with glowing wingtip lights
+    const wg = ctx.createLinearGradient(-size, 0, size, 0);
+    wg.addColorStop(0, st.body[2]); wg.addColorStop(0.5, st.body[1]); wg.addColorStop(1, st.body[2]);
+    for (const s of [-1, 1]) {
       ctx.fillStyle = wg;
       ctx.beginPath();
-      ctx.moveTo(-size * 0.32, size * 0.0);
-      ctx.lineTo(-size * (0.55 + 0.6 * w), size * 0.62);
-      ctx.lineTo(-size * (0.15 + 0.2 * w), size * 0.5);
+      ctx.moveTo(s * size * 0.24, -size * 0.08);
+      ctx.lineTo(s * size * span, size * 0.5);
+      ctx.lineTo(s * size * (span * 0.68), size * 0.62);
+      ctx.lineTo(s * size * 0.2, size * 0.48);
       ctx.closePath(); ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(size * 0.32, size * 0.0);
-      ctx.lineTo(size * (0.55 + 0.6 * w), size * 0.62);
-      ctx.lineTo(size * (0.15 + 0.2 * w), size * 0.5);
-      ctx.closePath(); ctx.fill();
-    }
-
-    // fins
-    ctx.fillStyle = st.fin;
-    ctx.beginPath();
-    ctx.moveTo(-size * 0.4, size * 0.5); ctx.lineTo(-size * 0.7, size * 0.7);
-    ctx.lineTo(-size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(size * 0.4, size * 0.5); ctx.lineTo(size * 0.7, size * 0.7);
-    ctx.lineTo(size * 0.4, size * 0.15); ctx.closePath(); ctx.fill();
-
-    // underside shadow for a rounder, 3D body
-    ctx.fillStyle = 'rgba(20,30,60,0.25)';
-    ctx.beginPath(); ctx.ellipse(0, size * 0.3, size * 0.42, size * 0.55, 0, 0, 7); ctx.fill();
-
-    // body with a left-light / right-shade gradient
-    const bg = ctx.createLinearGradient(-size * 0.5, 0, size * 0.5, 0);
-    bg.addColorStop(0, st.body[0]);
-    bg.addColorStop(0.45, st.body[1]);
-    bg.addColorStop(1, st.body[2]);
-    ctx.fillStyle = bg;
-    ctx.beginPath();
-    ctx.moveTo(0, -size * 0.9);
-    ctx.quadraticCurveTo(size * 0.5, -size * 0.1, size * 0.4, size * 0.55);
-    ctx.lineTo(-size * 0.4, size * 0.55);
-    ctx.quadraticCurveTo(-size * 0.5, -size * 0.1, 0, -size * 0.9);
-    ctx.closePath(); ctx.fill();
-
-    // glossy top highlight (3D sheen)
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.beginPath();
-    ctx.moveTo(-size * 0.06, -size * 0.85);
-    ctx.quadraticCurveTo(-size * 0.28, -size * 0.2, -size * 0.14, size * 0.3);
-    ctx.quadraticCurveTo(-size * 0.02, -size * 0.2, -size * 0.06, -size * 0.85);
-    ctx.closePath(); ctx.fill();
-
-    // energy core (level 2+): a pulsing glow set into the hull
-    if (st.core) {
-      const cr = size * (0.16 + 0.03 * Math.sin(elapsed * 8));
-      ctx.shadowColor = st.core; ctx.shadowBlur = size * 0.5;
-      ctx.fillStyle = st.core;
-      ctx.beginPath(); ctx.arc(0, size * 0.18, cr, 0, 7); ctx.fill();
+      ctx.strokeStyle = edge; ctx.lineWidth = size * 0.05;
+      ctx.beginPath(); ctx.moveTo(s * size * 0.24, -size * 0.08); ctx.lineTo(s * size * span, size * 0.5); ctx.stroke();
+      ctx.fillStyle = acc; ctx.shadowColor = acc; ctx.shadowBlur = size * 0.35;
+      ctx.beginPath(); ctx.arc(s * size * span, size * 0.5, size * 0.06, 0, 7); ctx.fill();
       ctx.shadowBlur = 0;
     }
 
-    // window / cockpit
-    ctx.fillStyle = st.win;
-    ctx.beginPath(); ctx.arc(0, -size * 0.15, size * 0.24, 0, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath(); ctx.arc(-size * 0.08, -size * 0.22, size * 0.09, 0, 7); ctx.fill();
+    // underside shadow for depth
+    ctx.fillStyle = 'rgba(15,22,50,0.3)';
+    ctx.beginPath(); ctx.ellipse(0, size * 0.36, size * 0.34, size * 0.62, 0, 0, 7); ctx.fill();
+
+    // angular dagger hull
+    const bg = ctx.createLinearGradient(-size * 0.45, 0, size * 0.45, 0);
+    bg.addColorStop(0, st.body[0]); bg.addColorStop(0.42, st.body[1]); bg.addColorStop(1, st.body[2]);
+    ctx.fillStyle = bg;
+    const hull = [[0, -1.08], [0.15, -0.5], [0.34, 0.06], [0.24, 0.55], [0.12, 0.66],
+                  [-0.12, 0.66], [-0.24, 0.55], [-0.34, 0.06], [-0.15, -0.5]];
+    ctx.beginPath();
+    hull.forEach((pt, i) => { const X = pt[0] * size, Y = pt[1] * size; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = size * 0.03; ctx.stroke();
+
+    // central spine sheen
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 1.0); ctx.lineTo(size * 0.07, size * 0.5); ctx.lineTo(-size * 0.07, size * 0.5);
+    ctx.closePath(); ctx.fill();
+
+    // hull panel lines
+    ctx.strokeStyle = 'rgba(20,30,60,0.35)'; ctx.lineWidth = Math.max(1, size * 0.02);
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * size * 0.2, -size * 0.35); ctx.lineTo(s * size * 0.26, size * 0.4); ctx.stroke();
+    }
+
+    // engine nozzle housings at the rear
+    ctx.fillStyle = '#2b3550';
+    const noz = st.flames >= 2 ? [-0.24, 0.24] : [0];
+    for (const nx of noz) {
+      ctx.beginPath();
+      ctx.moveTo(size * (nx - 0.1), size * 0.55); ctx.lineTo(size * (nx + 0.1), size * 0.55);
+      ctx.lineTo(size * (nx + 0.07), size * 0.68); ctx.lineTo(size * (nx - 0.07), size * 0.68);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // energy core (level 2+)
+    if (st.core) {
+      const cr = size * (0.13 + 0.03 * Math.sin(elapsed * 8));
+      ctx.shadowColor = st.core; ctx.shadowBlur = size * 0.5;
+      ctx.fillStyle = st.core;
+      ctx.beginPath(); ctx.arc(0, size * 0.2, cr, 0, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // elongated cockpit canopy near the nose
+    const cg = ctx.createLinearGradient(0, -size * 0.85, 0, -size * 0.1);
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.4, acc); cg.addColorStop(1, 'rgba(20,40,80,0.9)');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.82);
+    ctx.quadraticCurveTo(size * 0.15, -size * 0.5, size * 0.09, -size * 0.12);
+    ctx.lineTo(-size * 0.09, -size * 0.12);
+    ctx.quadraticCurveTo(-size * 0.15, -size * 0.5, 0, -size * 0.82);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.ellipse(-size * 0.03, -size * 0.5, size * 0.03, size * 0.16, 0.2, 0, 7); ctx.fill();
+
+    // nose-tip light
+    ctx.fillStyle = acc; ctx.shadowColor = acc; ctx.shadowBlur = size * 0.3;
+    ctx.beginPath(); ctx.arc(0, -size * 1.02, size * 0.05, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
 
     // active shield bubble
     if (shield) {
@@ -612,6 +732,9 @@
       const m = (shakeUntil - elapsed) * 40;
       ox = (Math.random() * 2 - 1) * m; oy = (Math.random() * 2 - 1) * m;
     }
+    // glowing nebula clouds sit deepest (screen space, before the shake save)
+    drawNebula();
+
     ctx.save();
     ctx.translate(ox, oy);
 
@@ -619,14 +742,25 @@
     const sortedPlanets = planets.slice().sort((a, b) => b.z - a.z);
     for (const pl of sortedPlanets) drawPlanet(pl);
 
-    // streaming background stars
+    // streaming background stars — elongated into warp streaks during the intro
+    const streak = warp > 0 ? Math.min(1, warp / 0.4) : 0;
     for (const s of bgStars) {
       const p = project(s.x, s.y, s.z);
       if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) continue;
       const r = Math.max(0.4, p.s * s.w * 0.012);
       ctx.globalAlpha = Math.min(1, (FAR_Z - s.z) / FAR_Z + 0.25);
       ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+      if (streak > 0) {
+        // draw a line from the vanishing point outward through the star
+        const dx = p.x - cx, dy = p.y - cy;
+        ctx.strokeStyle = '#cfe6ff';
+        ctx.lineWidth = Math.max(1, r * 1.5);
+        ctx.beginPath();
+        ctx.moveTo(cx + dx * (1 - streak * 0.9), cy + dy * (1 - streak * 0.9));
+        ctx.lineTo(p.x, p.y); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+      }
     }
     ctx.globalAlpha = 1;
 
@@ -643,6 +777,8 @@
         drawPowerup(p.x, p.y, p.s * 0.17, o.spin);
       } else if (o.kind === 'shield') {
         drawShieldGem(p.x, p.y, p.s * 0.17, o.spin);
+      } else if (o.kind === 'nova') {
+        drawNovaGem(p.x, p.y, p.s * 0.18, o.spin);
       } else {
         drawAsteroid(p.x, p.y, p.s * 0.2, o.spin, o.hue);
       }
@@ -660,13 +796,40 @@
       ctx.restore();
     }
 
-    // particles, explosions, bullets (bright overlays), popups, then the ship
+    // particles, explosions, bullets (bright overlays), popups, drones, ship
     for (const pt of particles) drawParticle(pt);
     for (const ex of explosions) drawExplosion(ex);
     for (const b of bullets) drawBullet(b);
     for (const pu of popups) drawPopup(pu);
+    const shipSize = project(ship.x, ship.y, SHIP_Z).s * 0.42;
+    for (const d of drones) drawDrone(d, shipSize);
     drawShip();
     ctx.restore();
+
+    // NOVA screen flash + expanding shockwave
+    const nf = (elapsed - novaFlash) / 0.6;
+    if (nf >= 0 && nf <= 1) {
+      ctx.save();
+      ctx.globalAlpha = (1 - nf) * 0.6;
+      ctx.fillStyle = '#dff6ff';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1 - nf;
+      ctx.strokeStyle = '#bff6ff'; ctx.lineWidth = 6 * (1 - nf);
+      ctx.beginPath(); ctx.arc(cx, cy, Math.max(W, H) * nf, 0, 7); ctx.stroke();
+      ctx.restore();
+    }
+
+    // "ON FIRE" edge glow when the combo is high
+    if (elapsed < comboUntil && comboMult() >= 4) {
+      const pulse = 0.4 + 0.3 * Math.sin(elapsed * 10);
+      ctx.save();
+      const eg = ctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.35, cx, cy, Math.max(W, H) * 0.65);
+      eg.addColorStop(0, 'rgba(255,120,40,0)');
+      eg.addColorStop(1, `rgba(255,90,20,${pulse})`);
+      ctx.fillStyle = eg;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
 
     // HUD (fixed, not affected by screen shake)
     ctx.save();
@@ -678,9 +841,16 @@
     // combo banner
     if (elapsed < comboUntil && comboMult() > 1) {
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffbe3c';
+      ctx.fillStyle = comboMult() >= 4 ? '#ff6a3c' : '#ffbe3c';
       ctx.font = 'bold 20px ' + getComputedStyle(document.body).fontFamily;
-      ctx.fillText('COMBO x' + comboMult() + ' 🔥', W / 2, 30);
+      ctx.fillText((comboMult() >= 4 ? '🔥 ON FIRE  x' : 'COMBO x') + comboMult(), W / 2, 30);
+    }
+    // warp intro banner
+    if (warp > 0) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#cfe6ff';
+      ctx.font = 'bold 22px ' + getComputedStyle(document.body).fontFamily;
+      ctx.fillText('WARP!', W / 2, H / 2);
     }
     ctx.restore();
   }
@@ -714,6 +884,19 @@
 
   function update(dt) {
     elapsed += dt;
+
+    // hyperspace warp intro — stars streak past, gameplay hasn't begun yet
+    if (warp > 0) {
+      warp -= dt;
+      for (const s of bgStars) {
+        s.z -= 42 * dt;
+        if (s.z < 0.6) { s.z = FAR_Z; s.x = (Math.random() * 2 - 1) * 9; s.y = (Math.random() * 2 - 1) * 9; }
+      }
+      ship.x += (ship.tx - ship.x) * Math.min(1, dt * 6);
+      ship.y += (ship.ty - ship.y) * Math.min(1, dt * 6);
+      return;
+    }
+
     speed = 7 + Math.min(elapsed * 0.25, 9);      // gently ramps toward 16
     spawnGap = Math.max(0.32, 0.7 - elapsed * 0.006);
     score += dt * 2;                               // small survival trickle
@@ -725,6 +908,20 @@
     ship.x += dx * Math.min(1, dt * 15);
     ship.y += dy * Math.min(1, dt * 15);
     ship.bank += (Math.max(-1, Math.min(1, dx * 2.4)) - ship.bank) * Math.min(1, dt * 9);
+
+    // wingman drones appear at max weapon level and flank the ship
+    if (weaponLvl >= 3 && drones.length < 2) {
+      drones.length = 0;
+      drones.push({ x: ship.x - 1.0, y: ship.y + 0.25, off: -1.0 });
+      drones.push({ x: ship.x + 1.0, y: ship.y + 0.25, off: 1.0 });
+    } else if (weaponLvl < 3 && drones.length) {
+      drones.length = 0;
+    }
+    for (const d of drones) {
+      const tx = Math.max(-X_MAX - 0.4, Math.min(X_MAX + 0.4, ship.x + d.off));
+      d.x += (tx - d.x) * Math.min(1, dt * 8);
+      d.y += ((ship.y + 0.25) - d.y) * Math.min(1, dt * 8);
+    }
 
     // engine trail puffs
     if (Math.random() < 0.6) {
@@ -840,6 +1037,12 @@
           window.SFX && window.SFX.match && window.SFX.match();
           hitFlash(true);
           objects.splice(i, 1);
+          continue;
+        }
+        if (o.kind === 'nova' && d < 1.1) {
+          objects.splice(i, 1);
+          hitFlash(true);
+          triggerNova();
           continue;
         }
         if (o.kind === 'rock' && d < 0.82) {
@@ -977,13 +1180,15 @@
     weaponLvl = 1; fireClock = 0; lvlUpAt = -99;
     combo = 0; comboUntil = 0; shield = false;
     boss = null; bossClock = 0;
-    ship.x = ship.tx = 0; ship.y = ship.ty = 1.0; ship.bank = 0;
+    warp = 1.2; novaFlash = -99;
+    ship.x = ship.tx = 0; ship.y = 1.9; ship.ty = 1.0; ship.bank = 0;
     objects.length = 0;
     bullets.length = 0;
     explosions.length = 0;
     particles.length = 0;
     popups.length = 0;
     trail.length = 0;
+    drones.length = 0;
     seedBackground();
     scoreEl.textContent = '0';
     starsEl.textContent = '0';
