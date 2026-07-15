@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Ném Bóng Rổ · GameHub</title>
+<link rel="stylesheet" href="../../css/style.css" />
+<link rel="manifest" href="../../manifest.webmanifest" />
+<meta name="theme-color" content="#ff6b9a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="GameHub" />
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png" />
+<style>
+  /* Local styles for the 3D basketball game. A perspective projection on a
+     2D canvas gives real depth — the ball flies away from the camera toward
+     the hoop — with no external 3D library, so it stays offline-friendly. */
+  .hoops-stage {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+    aspect-ratio: 3 / 4;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    background: linear-gradient(180deg, #ffd98a 0%, #ffb56b 45%, #e8925a 100%);
+    touch-action: none;
+  }
+  .hoops-stage canvas { display: block; width: 100%; height: 100%; }
+  .hoops-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center; color: #fff;
+    background: rgba(40, 24, 10, 0.5);
+    backdrop-filter: blur(2px);
+    padding: 20px;
+  }
+  .hoops-overlay[hidden] { display: none; }
+  .hoops-overlay h2 { margin: 8px 0 4px; font-size: 26px; }
+  .hoops-overlay p { margin: 0 0 16px; color: #ffeede; font-size: 15px; line-height: 1.5; }
+  .hoops-hint { text-align: center; color: var(--ink-soft); font-size: 14px; margin: 12px 0 0; }
+</style>
+</head>
+<body class="game-page">
+<div class="game-topbar">
+  <a class="back" href="../../">← Trang chủ</a>
+  <div>
+    <h1>🏀 Ném Bóng Rổ</h1>
+    <div class="who" id="whoLabel"></div>
+  </div>
+  <div class="stats">
+    <div class="stat">Điểm:<b id="score">0</b></div>
+    <div class="stat">🔥<b id="streak">0</b></div>
+    <div class="stat">🏀<b id="balls">10</b></div>
+    <div class="stat">🏆<b id="best">—</b></div>
+  </div>
+</div>
+
+<main class="game-main">
+  <div class="hoops-stage" id="stage">
+    <canvas id="c"></canvas>
+    <div class="hoops-overlay" id="overlay">
+      <div>
+        <div style="font-size:64px">🏀</div>
+        <h2>Ném bóng vào rổ!</h2>
+        <p>Vuốt lên phía rổ để ném bóng.<br />Vuốt mạnh = ném xa, canh cho trúng nha!</p>
+        <button class="btn" id="startBtn">Bắt đầu</button>
+      </div>
+    </div>
+  </div>
+  <p class="hoops-hint">Vuốt từ quả bóng về phía rổ · Vào rổ +2 · Không chạm vành +3 · 10 lượt ném</p>
+</main>
+
+<div class="modal" id="overModal">
+  <div class="box">
+    <div style="font-size:48px">🏁</div>
+    <h2>Hết lượt ném!</h2>
+    <p id="overText">Bạn được … điểm.</p>
+    <div class="actions">
+      <button class="btn" id="playAgain">Chơi lại</button>
+      <a class="btn ghost" href="../../">Về trang chủ</a>
+    </div>
+  </div>
+</div>
+
+<script src="../../js/sfx.js"></script>
+<script src="../../js/main.js"></script>
+<script src="../../js/pwa.js"></script>
+<script>
+(function () {
+  const stage    = document.getElementById('stage');
+  const canvas   = document.getElementById('c');
+  const ctx      = canvas.getContext('2d');
+  const overlay  = document.getElementById('overlay');
+  const scoreEl  = document.getElementById('score');
+  const streakEl = document.getElementById('streak');
+  const ballsEl  = document.getElementById('balls');
+  const bestEl   = document.getElementById('best');
+  const overModal= document.getElementById('overModal');
+  const overText = document.getElementById('overText');
+
+  // --- Perspective camera -----------------------------------------------
+  // Camera at the origin looking down +z. A world point (x, y, z) projects to
+  // screenX = cx + x*focal/z, screenY = cy - y*focal/z. Here +y is up and the
+  // hoop sits far away (large z) so the ball visibly flies into the distance.
+  let W = 0, H = 0, cx = 0, cy = 0, focal = 0, dpr = 1, horizon = 0;
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2; cy = H * 0.62; horizon = H * 0.34;
+    focal = W * 0.9;
+  }
+  window.addEventListener('resize', resize);
+
+  // Project a world point; returns null if behind the camera.
+  function project(x, y, z) {
+    if (z <= 0.05) return null;
+    const s = focal / z;
+    return { x: cx + x * s, y: cy - y * s, s };
+  }
+
+  // --- Hoop geometry (world units) --------------------------------------
+  const HOOP = { x: 0, y: 2.4, z: 9.0, r: 0.72 };   // rim centre & radius
+  const RIM_H = 0.0;                                 // rim is a flat ring
+  const BALL_R = 0.34;
+  const GRAV = -9.2;                                 // world units / s^2
+  const START = { x: 0, y: -1.4, z: 2.6 };           // ball launch point
+
+  // --- Game state -------------------------------------------------------
+  let running = false;
+  let score = 0, streak = 0, ballsLeft = 10;
+  let hoopDrift = 0;                 // hoop slides side to side once warmed up
+  let ball = null;                   // active flying ball, or null while aiming
+  let aiming = false, aimStart = null, aimNow = null;
+  let bob = 0;
+  let resultFlash = 0, resultText = '', resultColor = '';
+
+  function newBall() {
+    ball = {
+      x: START.x, y: START.y, z: START.z,
+      vx: 0, vy: 0, vz: 0,
+      flying: false, scored: false, done: false, touchedRim: false,
+      spin: 0,
+    };
+  }
+
+  // --- Drawing ----------------------------------------------------------
+  function drawBackground() {
+    // sky already painted by CSS gradient; add a court floor + crowd band
+    ctx.fillStyle = 'rgba(120, 72, 30, 0.35)';
+    ctx.fillRect(0, cy - 1, W, H - cy + 1);
+    // floor boards converging toward the hoop for extra depth
+    ctx.strokeStyle = 'rgba(255, 240, 210, 0.25)';
+    ctx.lineWidth = 2;
+    for (let i = -4; i <= 4; i++) {
+      const near = project(i * 1.1, -1.6, 2.6);
+      const far  = project(i * 0.5, -1.6, HOOP.z + 1.5);
+      if (near && far) {
+        ctx.beginPath(); ctx.moveTo(near.x, near.y); ctx.lineTo(far.x, far.y); ctx.stroke();
+      }
+    }
+  }
+
+  function hoopX() { return HOOP.x + hoopDrift; }
+
+  function drawBackboard() {
+    const bx = hoopX();
+    const bw = 1.5, bh = 1.15, top = HOOP.y + 1.05, bot = HOOP.y - 0.1, zz = HOOP.z + 0.45;
+    const tl = project(bx - bw / 2, top, zz);
+    const tr = project(bx + bw / 2, top, zz);
+    const br = project(bx + bw / 2, bot, zz);
+    const bl = project(bx - bw / 2, bot, zz);
+    if (!(tl && tr && br && bl)) return;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeStyle = '#e8563f'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(tl.x, tl.y); ctx.lineTo(tr.x, tr.y);
+    ctx.lineTo(br.x, br.y); ctx.lineTo(bl.x, bl.y); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // inner target square
+    const s2 = 0.42;
+    const p1 = project(bx - s2, HOOP.y + 0.62, zz);
+    const p2 = project(bx + s2, HOOP.y + 0.62, zz);
+    const p3 = project(bx + s2, HOOP.y + 0.12, zz);
+    const p4 = project(bx - s2, HOOP.y + 0.12, zz);
+    if (p1 && p2 && p3 && p4) {
+      ctx.strokeStyle = '#e8563f'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.stroke();
+    }
+  }
+
+  // Draw the rim as a projected ellipse ring; front arc can be drawn over the
+  // ball to sell the "through the hoop" effect.
+  function rimEllipse() {
+    const bx = hoopX();
+    const c = project(bx, HOOP.y, HOOP.z);
+    const right = project(bx + HOOP.r, HOOP.y, HOOP.z);
+    const front = project(bx, HOOP.y, HOOP.z - HOOP.r);
+    if (!(c && right && front)) return null;
+    return { cxp: c.x, cyp: c.y, rx: Math.abs(right.x - c.x), ry: Math.abs(front.y - c.y) };
+  }
+
+  function drawRim(back) {
+    const e = rimEllipse();
+    if (!e) return;
+    ctx.save();
+    ctx.strokeStyle = '#ff7a2f'; ctx.lineWidth = Math.max(3, e.ry * 0.5);
+    ctx.beginPath();
+    if (back) ctx.ellipse(e.cxp, e.cyp, e.rx, e.ry, 0, Math.PI, Math.PI * 2);
+    else      ctx.ellipse(e.cxp, e.cyp, e.rx, e.ry, 0, 0, Math.PI);
+    ctx.stroke();
+    if (back) {
+      // net hint
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.5;
+      for (let i = -2; i <= 2; i++) {
+        const nx = e.cxp + (i / 2) * e.rx * 0.8;
+        ctx.beginPath(); ctx.moveTo(nx, e.cyp);
+        ctx.lineTo(e.cxp + (i / 4) * e.rx * 0.5, e.cyp + e.ry * 2.6); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawBall() {
+    if (!ball) return;
+    const p = project(ball.x, ball.y, ball.z);
+    if (!p) return;
+    const r = Math.max(4, BALL_R * p.s);
+    ctx.save();
+    // soft shadow on the floor
+    const sh = project(ball.x, -1.55, ball.z);
+    if (sh) {
+      ctx.fillStyle = 'rgba(60,30,10,0.22)';
+      ctx.beginPath(); ctx.ellipse(sh.x, sh.y, r * 0.9, r * 0.35, 0, 0, 7); ctx.fill();
+    }
+    const g = ctx.createRadialGradient(p.x - r * 0.3, p.y - r * 0.3, r * 0.2, p.x, p.y, r);
+    g.addColorStop(0, '#ffb367');
+    g.addColorStop(1, '#e2621d');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+    // seams
+    ctx.strokeStyle = 'rgba(60,20,0,0.55)'; ctx.lineWidth = Math.max(1, r * 0.06);
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x - r, p.y); ctx.quadraticCurveTo(p.x, p.y + r * 0.3, p.x + r, p.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x, p.y - r); ctx.quadraticCurveTo(p.x + r * 0.3, p.y, p.x, p.y + r); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawAimGuide() {
+    if (!aiming || !aimStart || !aimNow) return;
+    const p = project(ball.x, ball.y, ball.z);
+    if (!p) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 4; ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(aimNow.x, aimNow.y); ctx.stroke();
+    ctx.setLineDash([]);
+    // power meter
+    const pw = Math.min(1, dragPower() / MAX_POWER);
+    ctx.fillStyle = pw > 0.85 ? '#ff5a5a' : '#65d36e';
+    ctx.fillRect(16, H - 26, (W - 32) * pw, 10);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+    ctx.strokeRect(16, H - 26, W - 32, 10);
+    ctx.restore();
+  }
+
+  function drawResult() {
+    if (resultFlash <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, resultFlash);
+    ctx.fillStyle = resultColor;
+    ctx.font = 'bold 34px ' + getComputedStyle(document.body).fontFamily;
+    ctx.textAlign = 'center';
+    ctx.fillText(resultText, cx, horizon + 10);
+    ctx.restore();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+    drawBackboard();
+    drawRim(true);        // back half of rim + net behind the ball
+    drawBall();
+    drawRim(false);       // front half of rim over the ball
+    drawAimGuide();
+    drawResult();
+  }
+
+  // --- Aiming & physics -------------------------------------------------
+  const MAX_POWER = 260;   // px drag length that maps to full power
+  function dragPower() {
+    if (!aimStart || !aimNow) return 0;
+    return Math.hypot(aimNow.x - aimStart.x, aimNow.y - aimStart.y);
+  }
+
+  function launch() {
+    const dx = aimNow.x - aimStart.x;
+    const power = Math.min(dragPower(), MAX_POWER) / MAX_POWER;
+    if (power < 0.12) { aiming = false; return; } // too small, ignore
+    // Map the swipe to a launch velocity. The mapping is calibrated so a
+    // moderate straight-up swipe (power ~0.45–0.55) arcs the ball right into
+    // the hoop — the ball peaks near the rim and drops through it — leaving a
+    // fair skill window: too soft falls short, too hard sails over the top.
+    // Left/right of the swipe steers the ball sideways.
+    ball.vy = 5.0 + power * 7.0;      // upward launch speed  (5.0 – 12.0)
+    ball.vz = 3.0 + power * 7.0;      // forward (into-screen) speed (3.0 – 10.0)
+    ball.vx = (dx / MAX_POWER) * 5.5; // sideways aim
+    ball.flying = true;
+    aiming = false;
+    window.SFX && window.SFX.eat && window.SFX.eat();
+  }
+
+  function scoreShot(clean) {
+    const pts = clean ? 3 : 2;
+    streak++;
+    const bonus = streak >= 3 ? 1 : 0;    // hot-streak bonus
+    score += pts + bonus;
+    scoreEl.textContent = score;
+    streakEl.textContent = streak;
+    resultText = clean ? 'SWISH! +' + (pts + bonus) : 'VÀO RỔ +' + (pts + bonus);
+    resultColor = clean ? '#2f9e44' : '#1f7a34';
+    resultFlash = 1.4;
+    window.SFX && window.SFX.win && window.SFX.win();
+  }
+
+  function missShot() {
+    streak = 0;
+    streakEl.textContent = 0;
+    resultText = 'HỤT!';
+    resultColor = '#c92a2a';
+    resultFlash = 1.0;
+    window.SFX && window.SFX.wrong && window.SFX.wrong();
+  }
+
+  function stepBall(dt) {
+    if (!ball || !ball.flying || ball.done) return;
+    const pz = ball.z;
+    ball.vy += GRAV * dt;
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+    ball.z += ball.vz * dt;
+
+    // Check the rim plane crossing (ball moving away from camera through z).
+    if (!ball.scored && pz < HOOP.z && ball.z >= HOOP.z) {
+      const t = (HOOP.z - pz) / (ball.z - pz || 1);
+      const cxAt = ball.x - ball.vx * dt * (1 - t);
+      const cyAt = ball.y - ball.vy * dt * (1 - t);
+      const dcx = cxAt - hoopX();
+      const dcy = cyAt - HOOP.y;
+      const dist = Math.hypot(dcx, dcy);
+      if (dist < HOOP.r - BALL_R * 0.5 && ball.vy < 0) {
+        // passed downward through the ring → basket!
+        ball.scored = true;
+        scoreShot(!ball.touchedRim);
+        setTimeout(nextBall, 700);
+      } else if (dist < HOOP.r + BALL_R && ball.vy < 1.5) {
+        // clipped the rim — bounce and mark as touched (no clean bonus)
+        ball.touchedRim = true;
+        ball.vz *= -0.45; ball.vx += dcx * 1.5; ball.vy *= 0.4;
+        window.SFX && window.SFX.click && window.SFX.click();
+      }
+    }
+
+    // Missed & fell below the floor, or flew far past — end the shot.
+    if (!ball.done && (ball.y < -1.7 || ball.z > HOOP.z + 4 || ball.z < 0.4)) {
+      ball.done = true;
+      if (!ball.scored) { missShot(); setTimeout(nextBall, 650); }
+    }
+  }
+
+  function nextBall() {
+    ballsLeft--;
+    ballsEl.textContent = ballsLeft;
+    if (ballsLeft <= 0) { end(); return; }
+    newBall();
+  }
+
+  // --- Main loop --------------------------------------------------------
+  let lastT = 0;
+  function loop(t) {
+    if (!running) return;
+    const dt = Math.min(0.04, (t - lastT) / 1000 || 0);
+    lastT = t;
+    bob += dt;
+    // hoop starts still, then gently drifts to raise difficulty as score grows
+    const amp = Math.min(1.6, score * 0.03);
+    hoopDrift = Math.sin(bob * 0.8) * amp;
+    stepBall(dt);
+    if (resultFlash > 0) resultFlash -= dt * 1.4;
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // --- Input ------------------------------------------------------------
+  function pt(e) {
+    const r = stage.getBoundingClientRect();
+    return {
+      x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left,
+      y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top,
+    };
+  }
+  function onDown(e) {
+    if (!running || !ball || ball.flying) return;
+    aiming = true; aimStart = pt(e); aimNow = aimStart; e.preventDefault();
+  }
+  function onMove(e) {
+    if (!aiming) return;
+    aimNow = pt(e); e.preventDefault();
+  }
+  function onUp(e) {
+    if (!aiming) return;
+    aimNow = aimNow || aimStart;
+    launch(); e && e.preventDefault && e.preventDefault();
+  }
+  stage.addEventListener('mousedown', onDown);
+  stage.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  stage.addEventListener('touchstart', onDown, { passive: false });
+  stage.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('touchend', onUp);
+
+  // --- Flow -------------------------------------------------------------
+  function syncBest() {
+    const b = window.Hub.getBest('hoops');
+    bestEl.textContent = b == null ? '—' : b;
+  }
+
+  function start() {
+    resize();
+    overlay.hidden = true;
+    running = true;
+    score = 0; streak = 0; ballsLeft = 10; hoopDrift = 0; resultFlash = 0;
+    scoreEl.textContent = '0';
+    streakEl.textContent = '0';
+    ballsEl.textContent = '10';
+    newBall();
+    lastT = performance.now();
+    window.SFX && window.SFX.start && window.SFX.start();
+    requestAnimationFrame((t) => { lastT = t; loop(t); });
+  }
+
+  function end() {
+    running = false;
+    ball = null;
+    window.SFX && window.SFX.gameover && window.SFX.gameover();
+    const improved = window.Hub.saveBest('hoops', score, 'high');
+    syncBest();
+    overText.textContent = `Bạn ghi được ${score} điểm.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
+    overModal.classList.add('open');
+  }
+
+  document.getElementById('startBtn').addEventListener('click', start);
+  document.getElementById('playAgain').addEventListener('click', () => {
+    overModal.classList.remove('open');
+    start();
+  });
+
+  resize();
+  newBall();
+  render();
+  syncBest();
+})();
+</script>
+</body>
+</html>

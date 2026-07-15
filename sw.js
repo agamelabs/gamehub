@@ -26,6 +26,7 @@ const ASSETS = [
   './games/2048/', './games/2048/index.html',
   './games/whack/', './games/whack/index.html',
   './games/space/', './games/space/index.html',
+  './games/hoops/', './games/hoops/index.html',
 ];
 
 self.addEventListener('install', (event) => {
