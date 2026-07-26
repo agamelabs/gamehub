@@ -23,6 +23,7 @@ const ASSETS = [
   './games/snake/', './games/snake/index.html',
   './games/simon/', './games/simon/index.html',
   './games/math/', './games/math/index.html',
+  './games/fingermath/', './games/fingermath/index.html',
   './games/2048/', './games/2048/index.html',
   './games/whack/', './games/whack/index.html',
   './games/space/', './games/space/index.html',
