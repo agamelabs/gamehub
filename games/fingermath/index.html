@@ -13,65 +13,127 @@
 <meta name="apple-mobile-web-app-title" content="GameHub" />
 <link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png" />
 <style>
-  /* --- Finger Math game styles ------------------------------------------- */
-  .fm-modes { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
-  .fm-modes button {
+  /* ===== Finger Math game ================================================ */
+  .game-main { overflow: hidden; }
+
+  /* Mode + difficulty pills */
+  .fm-pills { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  .fm-pills button {
     background: white; border: 2px solid #eef0f7; border-radius: 999px;
-    padding: 8px 16px; font-family: inherit; font-size: 15px; cursor: pointer;
+    padding: 8px 16px; font-family: inherit; font-size: 15px; font-weight: 700;
+    color: var(--ink-soft); cursor: pointer; transition: transform .12s, box-shadow .15s, background .15s;
   }
-  .fm-modes button.active { background: var(--accent-2); color: white; border-color: var(--accent-2); }
+  .fm-pills button:hover { transform: translateY(-1px); }
+  .fm-pills button:active { transform: scale(.95); }
+  .fm-pills.modes button.active { background: var(--accent-2); color: #fff; border-color: var(--accent-2); box-shadow: 0 6px 16px rgba(78,195,255,.4); }
+  .fm-pills.diffs button.active { background: var(--accent);   color: #fff; border-color: var(--accent);   box-shadow: 0 6px 16px rgba(255,107,154,.4); }
 
-  .fm-legend {
-    text-align: center; color: var(--ink-soft); font-size: 14px;
-    margin: 14px auto 0; max-width: 460px; line-height: 1.6;
+  /* Mascot + speech bubble */
+  .fm-guide { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 18px auto 4px; max-width: 520px; }
+  .fm-mascot {
+    font-size: 46px; line-height: 1; flex: 0 0 auto;
+    filter: drop-shadow(0 6px 8px rgba(31,42,68,.18));
+    transition: transform .2s;
   }
+  .fm-mascot.cheer { animation: mascotHop .5s ease; }
+  @keyframes mascotHop { 0%,100%{transform:translateY(0) rotate(0)} 30%{transform:translateY(-14px) rotate(-8deg)} 60%{transform:translateY(-6px) rotate(6deg)} }
+  .fm-mascot.oops { animation: mascotShake .4s ease; }
+  @keyframes mascotShake { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-9deg)} 75%{transform:rotate(9deg)} }
+  .fm-bubble {
+    position: relative; background: #fff; border: 3px solid #ffe1ec; border-radius: 18px;
+    padding: 12px 18px; font-weight: 700; font-size: 18px; color: var(--ink);
+    box-shadow: var(--shadow); max-width: 340px; min-height: 24px;
+  }
+  .fm-bubble::before {
+    content: ''; position: absolute; left: -14px; top: 22px; width: 0; height: 0;
+    border: 8px solid transparent; border-right-color: #ffe1ec;
+  }
+  .fm-bubble.pop { animation: bubblePop .34s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes bubblePop { 0%{transform:scale(.85)} 60%{transform:scale(1.05)} 100%{transform:scale(1)} }
 
-  .fm-prompt {
-    text-align: center; margin: 10px 0 4px; font-size: 20px; font-weight: 700;
-    color: var(--ink);
-  }
+  /* Target number (make mode) */
   .fm-target {
-    text-align: center; font-size: 64px; font-weight: 800; line-height: 1;
-    margin: 4px 0 2px;
-    background: linear-gradient(90deg, var(--accent), var(--purple));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-align: center; font-size: 66px; font-weight: 900; line-height: 1; margin: 6px 0 2px;
+    background: linear-gradient(90deg, var(--accent), var(--purple), var(--accent-2));
+    background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: hueShift 4s linear infinite;
   }
-  .fm-live { text-align: center; color: var(--ink-soft); font-size: 16px; min-height: 22px; }
-  .fm-live b { color: var(--accent-2); }
+  @keyframes hueShift { to { background-position: 200% center; } }
+  .fm-target.pop { animation: targetPop .4s cubic-bezier(.34,1.56,.64,1), hueShift 4s linear infinite; }
+  @keyframes targetPop { 0%{transform:scale(.6);opacity:0} 100%{transform:scale(1);opacity:1} }
 
+  /* Streak flame */
+  .fm-streak {
+    text-align: center; height: 26px; font-weight: 800; color: var(--orange); font-size: 17px;
+    opacity: 0; transition: opacity .2s; margin-top: 2px;
+  }
+  .fm-streak.show { opacity: 1; }
+  .fm-streak.bump { animation: streakBump .4s ease; }
+  @keyframes streakBump { 0%,100%{transform:scale(1)} 40%{transform:scale(1.35)} }
+
+  /* Hands */
   .fm-hands {
-    display: flex; justify-content: center; gap: 8px; margin: 10px auto 0;
-    max-width: 560px; flex-wrap: nowrap;
+    display: flex; justify-content: center; gap: 6px; margin: 8px auto 0; max-width: 560px;
+    transition: transform .3s;
   }
-  .fm-hand { width: 50%; max-width: 260px; }
-  .fm-hand svg { width: 100%; height: auto; display: block; }
-  .fm-hand-label {
-    text-align: center; font-size: 13px; color: var(--ink-soft); margin-top: 2px;
-  }
-  .fm-hands.interactive .fm-finger { cursor: pointer; }
-  .fm-hands.interactive .fm-finger:active { opacity: 0.85; }
+  .fm-hands.cheer { animation: handsCheer .5s ease; }
+  @keyframes handsCheer { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-16px)} }
+  .fm-hands.shake { animation: handsShake .4s ease; }
+  @keyframes handsShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-9px)} 60%{transform:translateX(9px)} }
+  .fm-hand { width: 50%; max-width: 262px; }
+  .fm-hand svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .fm-hand-label { text-align: center; font-size: 13px; color: var(--ink-soft); margin-top: 2px; font-weight: 700; }
 
-  .fm-options {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
-    max-width: 460px; margin: 16px auto 0;
-  }
+  /* Finger animation */
+  .fm-fg { transform-box: fill-box; transform-origin: 50% 100%; transition: transform .28s cubic-bezier(.34,1.5,.6,1); }
+  .fm-finger.down .fm-fg { transform: scaleY(.30); }
+  .fm-finger.down .fm-fbody { filter: grayscale(.55) brightness(.99); }
+  .fm-nail { transition: opacity .2s; }
+  .fm-finger.down .fm-nail { opacity: 0; }
+  .fm-badge circle { transition: fill .2s; }
+  .fm-badge text { transition: fill .2s; }
+  .fm-finger.down .fm-badge circle, .fm-badge.down circle { fill: #e7ded2; }
+  .fm-finger.down .fm-badge text,   .fm-badge.down text   { fill: #b3a99d; }
+  .fm-thumb { transition: transform .3s cubic-bezier(.34,1.4,.6,1); transform: var(--tup); }
+  .fm-thumb.down { transform: var(--tdn); }
+  .fm-thumb.down .fm-fbody { filter: grayscale(.55); }
+  .fm-thumb.down .fm-nail { opacity: 0; }
+  .fm-hands.interactive .fm-finger { cursor: pointer; }
+  .fm-hands.interactive .fm-finger:active .fm-fg { transform: scale(.94); }
+
+  /* Live counter (make mode) */
+  .fm-live { text-align: center; color: var(--ink-soft); font-size: 17px; min-height: 24px; font-weight: 700; margin-top: 4px; }
+  .fm-live b { color: var(--accent-2); font-size: 22px; }
+
+  /* Answer options (read mode) */
+  .fm-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; max-width: 460px; margin: 14px auto 0; }
   .fm-options button {
-    font-family: inherit; font-size: 28px; font-weight: 800; padding: 16px 0;
-    border: 3px solid #eef0f7; border-radius: 16px; background: white; color: var(--ink);
-    cursor: pointer; transition: transform .1s;
+    font-family: inherit; font-size: 30px; font-weight: 900; padding: 18px 0;
+    border: 3px solid #eef0f7; border-radius: 18px; background: #fff; color: var(--ink);
+    cursor: pointer; transition: transform .1s, box-shadow .15s; box-shadow: 0 4px 0 #e6e9f2;
   }
-  .fm-options button:active { transform: scale(0.96); }
-  .fm-options button.right { background: #d6ffd6; border-color: var(--green); }
-  .fm-options button.wrong { background: #ffe0e0; border-color: #ff8a8a; }
+  .fm-options button:hover { transform: translateY(-2px); }
+  .fm-options button:active { transform: translateY(2px); box-shadow: 0 1px 0 #e6e9f2; }
+  .fm-options button.right { background: #d8ffd8; border-color: var(--green); box-shadow: 0 4px 0 #7fd77f; animation: rightPulse .4s ease; }
+  @keyframes rightPulse { 0%,100%{transform:scale(1)} 45%{transform:scale(1.1)} }
+  .fm-options button.wrong { background: #ffe0e0; border-color: #ff8a8a; box-shadow: 0 4px 0 #ff8a8a; }
   .fm-options button:disabled { cursor: default; }
 
   .fm-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .fm-legend { text-align: center; color: var(--ink-soft); font-size: 14px; margin: 16px auto 0; max-width: 470px; line-height: 1.7; }
   .fm-hidden { display: none !important; }
 
+  #score.bump { animation: streakBump .35s ease; display: inline-block; }
+
+  /* Confetti canvas overlay */
+  #fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 60; }
+
   @media (max-width: 520px) {
-    .fm-target { font-size: 52px; }
-    .fm-options button { font-size: 24px; padding: 14px 0; }
-    .fm-hands { gap: 4px; }
+    .fm-target { font-size: 54px; }
+    .fm-options button { font-size: 24px; padding: 15px 0; }
+    .fm-hands { gap: 2px; }
+    .fm-bubble { font-size: 16px; padding: 10px 14px; max-width: 260px; }
+    .fm-mascot { font-size: 40px; }
   }
 </style>
 </head>
@@ -90,18 +152,23 @@
 </div>
 
 <main class="game-main">
-  <div class="fm-modes" id="modePick">
+  <div class="fm-pills modes" id="modePick">
     <button data-mode="read" class="active">👀 Đọc số</button>
     <button data-mode="make">✋ Bấm số</button>
   </div>
-  <div class="diff-pick" id="diffPick">
+  <div class="fm-pills diffs" id="diffPick">
     <button data-diff="easy" class="active">Trong 10</button>
     <button data-diff="med">Trong 20</button>
     <button data-diff="hard">Đủ 2 tay</button>
   </div>
 
-  <div class="fm-prompt" id="prompt">Bấm “Bắt đầu” để chơi nha!</div>
+  <div class="fm-guide">
+    <div class="fm-mascot" id="mascot">🦊</div>
+    <div class="fm-bubble" id="bubble">Chào bé! Cùng học đếm bằng ngón tay nha 😺</div>
+  </div>
+
   <div class="fm-target fm-hidden" id="target">0</div>
+  <div class="fm-streak" id="streakEl"></div>
 
   <div class="fm-hands" id="hands">
     <div class="fm-hand">
@@ -115,11 +182,10 @@
   </div>
 
   <div class="fm-live fm-hidden" id="live"></div>
-
   <div class="fm-options fm-hidden" id="options"></div>
 
   <div class="fm-actions">
-    <button class="btn" id="start">Bắt đầu</button>
+    <button class="btn" id="start">▶️ Bắt đầu</button>
     <button class="btn ghost fm-hidden" id="clear">✊ Nắm hết tay</button>
   </div>
 
@@ -129,10 +195,12 @@
   </div>
 </main>
 
+<canvas id="fx"></canvas>
+
 <div class="modal" id="overModal">
   <div class="box">
-    <div style="font-size:48px">🖐️</div>
-    <h2>Hết giờ!</h2>
+    <div style="font-size:52px" id="overEmoji">🖐️</div>
+    <h2 id="overTitle">Hết giờ!</h2>
     <p id="overText"></p>
     <div class="actions">
       <button class="btn" id="restart">Chơi lại</button>
@@ -152,130 +220,164 @@ function svg(tag, attrs) {
   return el;
 }
 
-// --- Finger math math ---------------------------------------------------
-// Each of the 4 fingers = 1, thumb = 5. Right hand = units, left = tens.
-// Canonical pattern for a single digit (0-9).
+/* ===== Confetti ========================================================= */
+const fx = document.getElementById('fx');
+const fxc = fx.getContext('2d');
+let particles = [], fxRaf = null;
+const CONFETTI_COLORS = ['#ff6b9a', '#4ec3ff', '#ffd54f', '#65d36e', '#a78bfa', '#ff9a5a'];
+function fxResize() { fx.width = window.innerWidth; fx.height = window.innerHeight; }
+fxResize(); window.addEventListener('resize', fxResize);
+function confetti(x, y, count = 44) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 7;
+    particles.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 4,
+      size: 6 + Math.random() * 7, color: CONFETTI_COLORS[(Math.random() * CONFETTI_COLORS.length) | 0],
+      rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.4, life: 70 + (Math.random() * 30 | 0),
+      round: Math.random() < 0.4,
+    });
+  }
+  if (!fxRaf) fxRaf = requestAnimationFrame(fxLoop);
+}
+function fxLoop() {
+  fxc.clearRect(0, 0, fx.width, fx.height);
+  particles = particles.filter((p) => p.life > 0 && p.y < fx.height + 40);
+  particles.forEach((p) => {
+    p.vy += 0.22; p.x += p.vx; p.y += p.vy; p.vx *= 0.99; p.rot += p.vr; p.life--;
+    fxc.save(); fxc.translate(p.x, p.y); fxc.rotate(p.rot); fxc.fillStyle = p.color;
+    fxc.globalAlpha = Math.min(1, p.life / 20);
+    if (p.round) { fxc.beginPath(); fxc.arc(0, 0, p.size / 2, 0, 6.28); fxc.fill(); }
+    else fxc.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+    fxc.restore();
+  });
+  if (particles.length) fxRaf = requestAnimationFrame(fxLoop);
+  else { fxRaf = null; fxc.clearRect(0, 0, fx.width, fx.height); }
+}
+function confettiAt(el, count) {
+  const r = el.getBoundingClientRect();
+  confetti(r.left + r.width / 2, r.top + r.height / 2, count);
+}
+
+/* ===== Mascot ============================================================ */
+const mascotEl = document.getElementById('mascot');
+const bubbleEl = document.getElementById('bubble');
+const PRAISE = ['Giỏi quá! 🎉', 'Chính xác! ⭐', 'Tuyệt vời! 🌟', 'Đúng rồi nè! 🎈', 'Siêu ghê! 🚀'];
+const NUDGE = ['Suýt rồi, thử lại nha 💪', 'Không sao, cố lên! 🌈', 'Gần đúng rồi đó! 🙂'];
+function say(text, mood) {
+  bubbleEl.textContent = text;
+  bubbleEl.classList.remove('pop'); void bubbleEl.offsetWidth; bubbleEl.classList.add('pop');
+  if (mood) {
+    mascotEl.textContent = mood === 'cheer' ? '🦊' : mood === 'oops' ? '🙀' : '🦊';
+    mascotEl.classList.remove('cheer', 'oops'); void mascotEl.offsetWidth;
+    if (mood === 'cheer') mascotEl.classList.add('cheer');
+    if (mood === 'oops') mascotEl.classList.add('oops');
+    if (mood === 'oops') setTimeout(() => { mascotEl.textContent = '🦊'; }, 900);
+  }
+}
+
+/* ===== Finger math ====================================================== */
 function digitPattern(d) {
   const thumb = d >= 5;
-  const n = thumb ? d - 5 : d;           // how many of index..pinky are up
-  return { thumb, fingers: [n > 0, n > 1, n > 2, n > 3] }; // index,middle,ring,pinky
+  const n = thumb ? d - 5 : d;
+  return { thumb, fingers: [n > 0, n > 1, n > 2, n > 3] };
 }
-// Value shown by one hand's current state.
 function handValue(state) {
   return state.fingers.filter(Boolean).length + (state.thumb ? 5 : 0);
 }
 
-// --- Hand rendering -----------------------------------------------------
-// Builds one SVG hand and returns { render(state), root, state }.
-// side: 'right' (thumb on the left, values 1/5) or 'left' (thumb on the
-// right, values 10/50). fingers order is always [index,middle,ring,pinky].
+/* ===== Hand rendering =================================================== */
+// side: 'right' (thumb left, values 1/5) | 'left' (thumb right, values 10/50)
 function buildHand(side, valueLabels, onToggle) {
-  const root = svg('svg', { viewBox: '0 0 240 300', class: 'fm-hand-svg' });
-
+  const VB = 250;
+  const root = svg('svg', { viewBox: `0 0 ${VB} 300` });
   const mirror = side === 'left';
-  // x positions for [index, middle, ring, pinky]
-  const rightXs = { index: 78, middle: 112, ring: 146, pinky: 180 };
-  const W = 28;
-  const xs = ['index', 'middle', 'ring', 'pinky'].map((k) =>
-    mirror ? 240 - rightXs[k] - W : rightXs[k]
-  );
-  const thumbPivot = mirror ? { x: 188, y: 214 } : { x: 52, y: 214 };
-  const thumbUpAngle = mirror ? 40 : -40;
-  const thumbDownAngle = mirror ? -8 : 8;
+  const mx = (x) => (mirror ? VB - x : x);          // point x
+  const mrx = (x, w) => (mirror ? VB - x - w : x);  // rect x
+
+  // defs: gradients + soft shadow
+  const uid = side;
+  const defs = svg('defs', {});
+  const skin = svg('linearGradient', { id: `skin-${uid}`, x1: 0, y1: 0, x2: 0, y2: 1 });
+  skin.appendChild(svg('stop', { offset: 0, 'stop-color': '#ffd9b0' }));
+  skin.appendChild(svg('stop', { offset: 1, 'stop-color': '#f3ab73' }));
+  const palmG = svg('linearGradient', { id: `palm-${uid}`, x1: 0, y1: 0, x2: 0, y2: 1 });
+  palmG.appendChild(svg('stop', { offset: 0, 'stop-color': '#f7b985' }));
+  palmG.appendChild(svg('stop', { offset: 1, 'stop-color': '#eb9f68' }));
+  const sh = svg('filter', { id: `sh-${uid}`, x: '-30%', y: '-30%', width: '160%', height: '160%' });
+  sh.appendChild(svg('feDropShadow', { dx: 0, dy: 4, stdDeviation: 5, 'flood-color': '#b56b33', 'flood-opacity': .35 }));
+  defs.appendChild(skin); defs.appendChild(palmG); defs.appendChild(sh);
+  root.appendChild(defs);
+
+  const hand = svg('g', { filter: `url(#sh-${uid})` });
+  root.appendChild(hand);
 
   // palm
-  root.appendChild(svg('rect', { x: 36, y: 172, width: 168, height: 104, rx: 40, fill: '#f2ad78' }));
+  hand.appendChild(svg('rect', { x: 44, y: 176, width: 170, height: 108, rx: 44, fill: `url(#palm-${uid})` }));
 
-  const FINGER_BOTTOM = 208;
-  const parts = { fingers: [], nails: [], labels: [] };
+  const FW = 28, FTOP = 54, FBOT = 204, FH = FBOT - FTOP;
+  const rightXs = { index: 84, middle: 118, ring: 152, pinky: 186 };
+  const order = ['index', 'middle', 'ring', 'pinky'];
+  const fingerEls = [];
 
-  // four fingers
-  xs.forEach((x, i) => {
+  order.forEach((key, i) => {
+    const rx = mrx(rightXs[key], FW), cx = rx + FW / 2;
     const g = svg('g', { class: 'fm-finger' });
     g.dataset.finger = i;
-    const rect = svg('rect', { x, width: W, rx: 14 });
-    const nail = svg('ellipse', { cx: x + W / 2, rx: 9, ry: 11, fill: '#ffe4cf' });
-    const label = svg('text', {
-      x: x + W / 2, 'text-anchor': 'middle', 'font-size': 18,
-      'font-weight': 700, 'font-family': 'inherit',
-    });
-    label.textContent = valueLabels.finger;
-    g.appendChild(rect); g.appendChild(nail); g.appendChild(label);
+    const anim = svg('g', { class: 'fm-fg' });
+    anim.appendChild(svg('rect', { class: 'fm-fbody', x: rx, y: FTOP, width: FW, height: FH, rx: 14, fill: `url(#skin-${uid})`, stroke: '#e0975f', 'stroke-width': 2 }));
+    anim.appendChild(svg('ellipse', { class: 'fm-nail', cx, cy: FTOP + 16, rx: 8.5, ry: 10.5, fill: '#ffe9d6' }));
+    g.appendChild(anim);
+    const badge = svg('g', { class: 'fm-badge' });
+    badge.appendChild(svg('circle', { cx, cy: 232, r: 15, fill: '#c8f2cf' }));
+    const t = svg('text', { x: cx, y: 238, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 800, 'font-family': 'inherit', fill: '#1f7a3d' });
+    t.textContent = valueLabels.finger;
+    badge.appendChild(t);
+    g.appendChild(badge);
     if (onToggle) g.addEventListener('click', () => onToggle('finger', i));
-    root.appendChild(g);
-    parts.fingers.push(rect); parts.nails.push(nail); parts.labels.push(label);
+    hand.appendChild(g);
+    fingerEls.push(g);
   });
 
-  // thumb (rotated group)
-  const thumbG = svg('g', { class: 'fm-finger' });
-  thumbG.dataset.finger = 'thumb';
-  const thumbRect = svg('rect', {
-    x: thumbPivot.x - 15, width: 30, rx: 15,
-  });
-  const thumbNail = svg('ellipse', { rx: 10, ry: 12, fill: '#ffe4cf' });
-  const thumbLabel = svg('text', {
-    'text-anchor': 'middle', 'font-size': 18, 'font-weight': 700, 'font-family': 'inherit',
-  });
-  thumbLabel.textContent = valueLabels.thumb;
-  thumbG.appendChild(thumbRect); thumbG.appendChild(thumbNail); thumbG.appendChild(thumbLabel);
-  if (onToggle) thumbG.addEventListener('click', () => onToggle('thumb'));
-  root.appendChild(thumbG);
+  // thumb
+  const pivotX = mx(58), pivotY = 210;
+  const upAngle = mirror ? 42 : -42, downAngle = mirror ? 10 : -10;
+  const tRectX = mrx(44, 28);
+  const thumb = svg('g', { class: 'fm-finger fm-thumb' });
+  thumb.dataset.finger = 'thumb';
+  thumb.style.transformBox = 'view-box';
+  thumb.style.transformOrigin = `${pivotX}px ${pivotY}px`;
+  thumb.style.setProperty('--tup', `rotate(${upAngle}deg)`);
+  thumb.style.setProperty('--tdn', `rotate(${downAngle}deg) scaleY(.30)`);
+  thumb.appendChild(svg('rect', { class: 'fm-fbody', x: tRectX, y: 70, width: 28, height: 140, rx: 14, fill: `url(#skin-${uid})`, stroke: '#e0975f', 'stroke-width': 2 }));
+  thumb.appendChild(svg('ellipse', { class: 'fm-nail', cx: pivotX, cy: 86, rx: 9, ry: 11, fill: '#ffe9d6' }));
+  if (onToggle) thumb.addEventListener('click', () => onToggle('thumb'));
+  hand.appendChild(thumb);
 
-  const UP = { fill: '#f7c08f', stroke: '#e59b66' };
-  const DOWN = { fill: '#e3d0bf', stroke: '#cdb3a0' };
+  // thumb value badge (fixed, readable)
+  const tb = svg('g', { class: 'fm-badge fm-thumb-badge' });
+  const tbx = mx(38), tby = 250;
+  tb.appendChild(svg('circle', { cx: tbx, cy: tby, r: 16, fill: '#c8f2cf' }));
+  const tbt = svg('text', { x: tbx, y: tby + 6, 'text-anchor': 'middle', 'font-size': 15, 'font-weight': 800, 'font-family': 'inherit', fill: '#1f7a3d' });
+  tbt.textContent = valueLabels.thumb;
+  tb.appendChild(tbt);
+  hand.appendChild(tb);
 
   function render(state) {
-    // fingers
-    state.fingers.forEach((up, i) => {
-      const rect = parts.fingers[i];
-      const top = up ? 56 : 150;
-      const h = FINGER_BOTTOM - top;
-      rect.setAttribute('y', top);
-      rect.setAttribute('height', h);
-      rect.setAttribute('fill', up ? UP.fill : DOWN.fill);
-      rect.setAttribute('stroke', up ? UP.stroke : DOWN.stroke);
-      rect.setAttribute('stroke-width', 3);
-      const nail = parts.nails[i];
-      nail.setAttribute('cy', top + 14);
-      nail.style.display = up ? '' : 'none';
-      const label = parts.labels[i];
-      label.setAttribute('y', up ? top + 46 : top + 30);
-      label.setAttribute('fill', up ? '#1f7a3d' : '#b0a79c');
-      label.textContent = up ? valueLabels.finger : '';
-    });
-    // thumb
-    const up = state.thumb;
-    const len = up ? 118 : 60;
-    thumbRect.setAttribute('y', thumbPivot.y - len);
-    thumbRect.setAttribute('height', len);
-    thumbRect.setAttribute('fill', up ? UP.fill : DOWN.fill);
-    thumbRect.setAttribute('stroke', up ? UP.stroke : DOWN.stroke);
-    thumbRect.setAttribute('stroke-width', 3);
-    const angle = up ? thumbUpAngle : thumbDownAngle;
-    const tf = `rotate(${angle} ${thumbPivot.x} ${thumbPivot.y})`;
-    thumbRect.setAttribute('transform', tf);
-    thumbNail.setAttribute('cx', thumbPivot.x);
-    thumbNail.setAttribute('cy', thumbPivot.y - len + 14);
-    thumbNail.setAttribute('transform', tf);
-    thumbNail.style.display = up ? '' : 'none';
-    thumbLabel.setAttribute('x', thumbPivot.x);
-    thumbLabel.setAttribute('y', thumbPivot.y - len + 42);
-    thumbLabel.setAttribute('transform', tf);
-    thumbLabel.setAttribute('fill', up ? '#1f7a3d' : '#b0a79c');
-    thumbLabel.textContent = up ? valueLabels.thumb : '';
+    state.fingers.forEach((up, i) => fingerEls[i].classList.toggle('down', !up));
+    thumb.classList.toggle('down', !state.thumb);
+    tb.classList.toggle('down', !state.thumb);
   }
-
   return { root, render };
 }
 
-// --- Game state ---------------------------------------------------------
+/* ===== Game ============================================================= */
 const els = {
   whoLabel: document.getElementById('whoLabel'),
   score: document.getElementById('score'),
   time: document.getElementById('time'),
   best: document.getElementById('best'),
-  prompt: document.getElementById('prompt'),
   target: document.getElementById('target'),
+  streakEl: document.getElementById('streakEl'),
   hands: document.getElementById('hands'),
   live: document.getElementById('live'),
   options: document.getElementById('options'),
@@ -283,46 +385,63 @@ const els = {
   clear: document.getElementById('clear'),
   overModal: document.getElementById('overModal'),
   overText: document.getElementById('overText'),
+  overTitle: document.getElementById('overTitle'),
+  overEmoji: document.getElementById('overEmoji'),
 };
 
-// Build both hands once. Left hand (tens) uses 10/50 labels.
 const rightState = { thumb: false, fingers: [false, false, false, false] };
 const leftState = { thumb: false, fingers: [false, false, false, false] };
-
 const rightHand = buildHand('right', { finger: '1', thumb: '5' }, onFingerTap.bind(null, 'right'));
 const leftHand = buildHand('left', { finger: '10', thumb: '50' }, onFingerTap.bind(null, 'left'));
 document.getElementById('handRightSvg').appendChild(rightHand.root);
 document.getElementById('handLeftSvg').appendChild(leftHand.root);
 
-let mode = 'read';
-let diff = 'easy';
+let mode = 'read', diff = 'easy';
 let score = 0, streak = 0, timeLeft = 40, timer = null, running = false;
-let target = 0, answered = false;
+let target = 0, answered = false, nextTimer = null;
+
+// Schedule the next round, cancelling any pending one so a stale round from
+// before a mode/difficulty switch can't clobber the current one.
+function scheduleNext(fn, ms) {
+  clearTimeout(nextTimer);
+  nextTimer = setTimeout(() => { nextTimer = null; if (running) fn(); }, ms);
+}
 
 function rand(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 function maxForDiff() { return diff === 'easy' ? 10 : diff === 'med' ? 20 : 99; }
 function startTime() { return mode === 'make' ? 50 : 40; }
 
-function renderHands() {
-  rightHand.render(rightState);
-  leftHand.render(leftState);
-}
-
+function renderHands() { rightHand.render(rightState); leftHand.render(leftState); }
 function setStateFromNumber(n) {
-  const units = n % 10, tens = Math.floor(n / 10);
-  Object.assign(rightState, digitPattern(units));
-  Object.assign(leftState, digitPattern(tens));
+  Object.assign(rightState, digitPattern(n % 10));
+  Object.assign(leftState, digitPattern(Math.floor(n / 10)));
   renderHands();
 }
-
 function clearHands() {
   rightState.thumb = false; rightState.fingers = [false, false, false, false];
   leftState.thumb = false; leftState.fingers = [false, false, false, false];
   renderHands();
 }
+function currentNumber() { return handValue(leftState) * 10 + handValue(rightState); }
 
-function currentNumber() {
-  return handValue(leftState) * 10 + handValue(rightState);
+function bumpScore() {
+  els.score.textContent = score;
+  els.score.classList.remove('bump'); void els.score.offsetWidth; els.score.classList.add('bump');
+}
+function showStreak() {
+  if (streak >= 2) {
+    els.streakEl.textContent = `🔥 Chuỗi đúng: ${streak}`;
+    els.streakEl.classList.add('show', 'bump');
+    setTimeout(() => els.streakEl.classList.remove('bump'), 400);
+  } else {
+    els.streakEl.classList.remove('show');
+  }
+}
+function cheerHands() {
+  els.hands.classList.remove('cheer'); void els.hands.offsetWidth; els.hands.classList.add('cheer');
+}
+function shakeHands() {
+  els.hands.classList.remove('shake'); void els.hands.offsetWidth; els.hands.classList.add('shake');
 }
 
 function syncWho() {
@@ -331,19 +450,17 @@ function syncWho() {
   els.best.textContent = window.Hub.getBest('fingermath') ?? '—';
 }
 
-// --- Read mode ----------------------------------------------------------
+/* --- Read mode --- */
 function newReadRound() {
   answered = false;
   target = rand(1, maxForDiff());
   setStateFromNumber(target);
-  els.prompt.textContent = 'Hai bàn tay đang chỉ số mấy? 🤔';
+  say('Hai bàn tay đang chỉ số mấy? 🤔');
   els.target.classList.add('fm-hidden');
   buildOptions(target);
 }
-
 function buildOptions(correct) {
-  const set = new Set([correct]);
-  const max = maxForDiff();
+  const set = new Set([correct]), max = maxForDiff();
   while (set.size < 4) {
     let w = correct + rand(-4, 4);
     if (w < 0) w = Math.abs(w);
@@ -359,67 +476,54 @@ function buildOptions(correct) {
     els.options.appendChild(b);
   });
 }
-
 function chooseOption(btn, v) {
   if (!running || answered) return;
   answered = true;
   [...els.options.children].forEach((c) => { c.disabled = true; });
   if (v === target) {
-    btn.classList.add('right');
-    win();
+    btn.classList.add('right'); confettiAt(btn, 40); win();
   } else {
     btn.classList.add('wrong');
-    [...els.options.children].forEach((c) => {
-      if (Number(c.textContent) === target) c.classList.add('right');
-    });
-    streak = 0;
+    [...els.options.children].forEach((c) => { if (Number(c.textContent) === target) c.classList.add('right'); });
+    streak = 0; showStreak(); shakeHands();
+    say(NUDGE[rand(0, NUDGE.length - 1)], 'oops');
     window.SFX && window.SFX.wrong();
   }
-  setTimeout(() => { if (running) newReadRound(); }, 650);
+  scheduleNext(newReadRound, 750);
 }
 
-// --- Make mode ----------------------------------------------------------
+/* --- Make mode --- */
 function newMakeRound() {
   answered = false;
   target = rand(1, maxForDiff());
   clearHands();
-  els.prompt.textContent = 'Hãy bấm ngón tay để tạo số:';
+  say(`Hãy bấm ngón tay để tạo số này nhé! 👇`);
   els.target.textContent = target;
-  els.target.classList.remove('fm-hidden');
+  els.target.classList.remove('fm-hidden', 'pop'); void els.target.offsetWidth; els.target.classList.add('pop');
   updateLive();
 }
-
 function onFingerTap(hand, kind, i) {
   if (mode !== 'make' || !running || answered) return;
   const st = hand === 'right' ? rightState : leftState;
-  if (kind === 'thumb') st.thumb = !st.thumb;
-  else st.fingers[i] = !st.fingers[i];
+  if (kind === 'thumb') st.thumb = !st.thumb; else st.fingers[i] = !st.fingers[i];
   window.SFX && window.SFX.click();
-  renderHands();
-  updateLive();
+  renderHands(); updateLive();
   if (currentNumber() === target) {
-    answered = true;
-    win();
-    setTimeout(() => { if (running) newMakeRound(); }, 750);
+    answered = true; confettiAt(els.hands, 50); win();
+    scheduleNext(newMakeRound, 850);
   }
 }
+function updateLive() { els.live.innerHTML = `Bạn đang tạo: <b>${currentNumber()}</b>`; }
 
-function updateLive() {
-  els.live.innerHTML = `Bạn đang tạo: <b>${currentNumber()}</b>`;
-}
-
-// --- Shared game flow ---------------------------------------------------
+/* --- Shared --- */
 function win() {
-  score += 10 + streak * 2;
-  streak++;
+  score += 10 + streak * 2; streak++;
   timeLeft = Math.min(timeLeft + 2, 90);
-  els.score.textContent = score;
+  bumpScore(); showStreak(); cheerHands();
+  say(PRAISE[rand(0, PRAISE.length - 1)], 'cheer');
   window.SFX && window.SFX.correct();
 }
-
-function newRound() {
-  if (mode === 'read') newReadRound(); else newMakeRound();
-}
+function newRound() { if (mode === 'read') newReadRound(); else newMakeRound(); }
 
 function applyModeUI() {
   const readMode = mode === 'read';
@@ -428,67 +532,66 @@ function applyModeUI() {
   els.clear.classList.toggle('fm-hidden', readMode);
   els.hands.classList.toggle('interactive', !readMode);
 }
-
 function start() {
   els.overModal.classList.remove('open');
+  clearTimeout(nextTimer); nextTimer = null;
   window.SFX && window.SFX.start();
   score = 0; streak = 0; timeLeft = startTime(); running = true;
   els.score.textContent = 0; els.time.textContent = timeLeft;
+  els.streakEl.classList.remove('show');
   applyModeUI();
-  els.start.textContent = 'Chơi lại';
-  clearInterval(timer);
-  timer = setInterval(tick, 1000);
+  els.start.textContent = '🔄 Chơi lại';
+  clearInterval(timer); timer = setInterval(tick, 1000);
   newRound();
 }
-
 function tick() {
-  timeLeft--;
-  els.time.textContent = timeLeft;
+  timeLeft--; els.time.textContent = timeLeft;
   if (timeLeft > 0 && timeLeft <= 5 && window.SFX) window.SFX.tick();
   if (timeLeft <= 0) end();
 }
-
 function end() {
-  running = false;
-  clearInterval(timer);
-  window.SFX && window.SFX.gameover();
+  running = false; clearInterval(timer);
   const improved = window.Hub.saveBest('fingermath', score, 'high');
   els.best.textContent = window.Hub.getBest('fingermath');
-  els.overText.textContent = `Bạn đạt ${score} điểm.` + (improved ? ' 🏆 Kỷ lục mới!' : '');
+  if (improved && score > 0) {
+    els.overEmoji.textContent = '🏆'; els.overTitle.textContent = 'Kỷ lục mới!';
+    els.overText.textContent = `Tuyệt vời! Bạn đạt ${score} điểm.`;
+    window.SFX && window.SFX.win();
+    setTimeout(() => { confetti(window.innerWidth / 2, window.innerHeight * 0.35, 90); }, 150);
+  } else {
+    els.overEmoji.textContent = '🖐️'; els.overTitle.textContent = 'Hết giờ!';
+    els.overText.textContent = `Bạn đạt ${score} điểm. Cố thêm lần nữa nha!`;
+    window.SFX && window.SFX.gameover();
+  }
   els.overModal.classList.add('open');
 }
 
-// --- Controls -----------------------------------------------------------
+/* --- Controls --- */
 document.getElementById('modePick').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   document.querySelectorAll('#modePick button').forEach((x) => x.classList.remove('active'));
-  b.classList.add('active');
-  mode = b.dataset.mode;
+  b.classList.add('active'); mode = b.dataset.mode;
   if (running) start(); else { applyModeUI(); resetPreview(); }
 });
-
 document.getElementById('diffPick').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   document.querySelectorAll('#diffPick button').forEach((x) => x.classList.remove('active'));
-  b.classList.add('active');
-  diff = b.dataset.diff;
-  if (running) newRound();
+  b.classList.add('active'); diff = b.dataset.diff;
+  if (running) { clearTimeout(nextTimer); nextTimer = null; answered = false; newRound(); }
 });
-
 els.clear.addEventListener('click', () => {
   if (mode === 'make' && running) { clearHands(); updateLive(); window.SFX && window.SFX.click(); }
 });
-
 els.start.addEventListener('click', start);
 document.getElementById('restart').addEventListener('click', start);
 
 function resetPreview() {
-  els.prompt.textContent = 'Bấm “Bắt đầu” để chơi nha!';
   els.target.classList.add('fm-hidden');
-  setStateFromNumber(mode === 'read' ? 7 : 0);
+  els.streakEl.classList.remove('show');
+  if (mode === 'read') { say('Bấm “Bắt đầu” rồi đoán số nhé! 👀'); setStateFromNumber(7); }
+  else { say('Bấm “Bắt đầu” rồi tạo số bằng ngón tay nha! ✋'); setStateFromNumber(0); }
 }
 
-// initial preview
 syncWho();
 applyModeUI();
 setStateFromNumber(7);
