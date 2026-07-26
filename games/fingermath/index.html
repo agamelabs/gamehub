@@ -62,6 +62,14 @@
   .fm-target.pop { animation: targetPop .4s cubic-bezier(.34,1.56,.64,1), hueShift 4s linear infinite; }
   @keyframes targetPop { 0%{transform:scale(.6);opacity:0} 100%{transform:scale(1);opacity:1} }
 
+  /* Equation (mental-math mode) */
+  .fm-equation {
+    text-align: center; font-size: 46px; font-weight: 900; line-height: 1.1; margin: 24px 0 10px;
+    color: var(--ink); letter-spacing: 1px; white-space: nowrap;
+  }
+  .fm-equation .q { color: var(--accent); }
+  .fm-equation.pop { animation: targetPop .4s cubic-bezier(.34,1.56,.64,1); }
+
   /* Streak flame */
   .fm-streak {
     text-align: center; height: 26px; font-weight: 800; color: var(--orange); font-size: 17px;
@@ -143,6 +151,7 @@
     .fm-mascot { font-size: 40px; }
     .fm-bubble { font-size: 16px; padding: 10px 14px; max-width: 62vw; }
     .fm-target { font-size: 52px; }
+    .fm-equation { font-size: 40px; margin: 18px 0 8px; }
     .fm-hands { gap: 2px; }
     .fm-options { gap: 8px; }
     .fm-options button { font-size: 26px; padding: 18px 0; }
@@ -153,6 +162,7 @@
   @media (max-width: 380px) {
     .fm-options button { font-size: 22px; padding: 15px 0; }
     .fm-target { font-size: 46px; }
+    .fm-equation { font-size: 33px; }
   }
 </style>
 </head>
@@ -174,6 +184,7 @@
   <div class="fm-pills modes" id="modePick">
     <button data-mode="read" class="active">👀 Đọc số</button>
     <button data-mode="make">✋ Bấm số</button>
+    <button data-mode="mental">🧠 Nhẩm nhanh</button>
   </div>
   <div class="fm-pills diffs" id="diffPick">
     <button data-diff="easy" class="active">Trong 10</button>
@@ -187,6 +198,7 @@
   </div>
 
   <div class="fm-target fm-hidden" id="target">0</div>
+  <div class="fm-equation fm-hidden" id="equation">3 + 2 = ?</div>
   <div class="fm-streak" id="streakEl"></div>
 
   <div class="fm-hands" id="hands">
@@ -423,6 +435,7 @@ const els = {
   time: document.getElementById('time'),
   best: document.getElementById('best'),
   target: document.getElementById('target'),
+  equation: document.getElementById('equation'),
   streakEl: document.getElementById('streakEl'),
   hands: document.getElementById('hands'),
   live: document.getElementById('live'),
@@ -535,7 +548,7 @@ function chooseOption(btn, v) {
     say(NUDGE[rand(0, NUDGE.length - 1)], 'oops');
     play('wrong');
   }
-  scheduleNext(newReadRound, 750);
+  scheduleNext(newRound, 750);  // read & mental both use options
 }
 
 /* --- Make mode --- */
@@ -561,6 +574,34 @@ function onFingerTap(hand, kind, i) {
 }
 function updateLive() { els.live.innerHTML = `Bạn đang tạo: <b>${currentNumber()}</b>`; }
 
+/* --- Mental-math mode (no hands — practise calculating in your head) --- */
+function makeMentalProblem() {
+  const max = maxForDiff();
+  const plus = rand(0, 1) === 1;
+  let a, b, answer, op;
+  if (plus) {
+    op = '+';
+    a = rand(1, max - 1);
+    b = rand(1, max - a);   // >=1 so no trivial "+ 0"
+    answer = a + b;
+  } else {
+    op = '−';
+    a = rand(2, max);
+    b = rand(1, a - 1);     // 1..a-1 so it's never "- 0" nor "a - a"
+    answer = a - b;
+  }
+  return { a, b, op, answer };
+}
+function newMentalRound() {
+  answered = false;
+  const p = makeMentalProblem();
+  target = p.answer;
+  say('Tính nhẩm nhanh xem nào! 🧠');
+  els.equation.innerHTML = `${p.a} ${p.op} ${p.b} = <span class="q">?</span>`;
+  els.equation.classList.remove('fm-hidden', 'pop'); void els.equation.offsetWidth; els.equation.classList.add('pop');
+  buildOptions(p.answer);
+}
+
 /* --- Shared --- */
 function win() {
   score += 10 + streak * 2; streak++;
@@ -569,14 +610,21 @@ function win() {
   say(PRAISE[rand(0, PRAISE.length - 1)], 'cheer');
   play('correct');
 }
-function newRound() { if (mode === 'read') newReadRound(); else newMakeRound(); }
+function newRound() {
+  if (mode === 'read') newReadRound();
+  else if (mode === 'make') newMakeRound();
+  else newMentalRound();
+}
 
 function applyModeUI() {
-  const readMode = mode === 'read';
-  els.options.classList.toggle('fm-hidden', !readMode);
-  els.live.classList.toggle('fm-hidden', readMode);
-  els.clear.classList.toggle('fm-hidden', readMode);
-  els.hands.classList.toggle('interactive', !readMode);
+  const optMode = (mode === 'read' || mode === 'mental');
+  els.options.classList.toggle('fm-hidden', !optMode);
+  els.live.classList.toggle('fm-hidden', mode !== 'make');
+  els.clear.classList.toggle('fm-hidden', mode !== 'make');
+  els.hands.classList.toggle('fm-hidden', mode === 'mental');
+  els.hands.classList.toggle('interactive', mode === 'make');
+  els.equation.classList.toggle('fm-hidden', mode !== 'mental');
+  if (mode !== 'make') els.target.classList.add('fm-hidden');
 }
 function start() {
   els.overModal.classList.remove('open');
@@ -635,8 +683,11 @@ document.getElementById('restart').addEventListener('click', start);
 function resetPreview() {
   els.target.classList.add('fm-hidden');
   els.streakEl.classList.remove('show');
+  els.options.innerHTML = '';
+  els.equation.classList.toggle('fm-hidden', mode !== 'mental');
   if (mode === 'read') { say('Bấm “Bắt đầu” rồi đoán số nhé! 👀'); setStateFromNumber(7); }
-  else { say('Bấm “Bắt đầu” rồi tạo số bằng ngón tay nha! ✋'); setStateFromNumber(0); }
+  else if (mode === 'make') { say('Bấm “Bắt đầu” rồi tạo số bằng ngón tay nha! ✋'); setStateFromNumber(0); }
+  else { say('Bấm “Bắt đầu” rồi tính nhẩm, không dùng tay nha! 🧠'); els.equation.innerHTML = '3 + 2 = <span class="q">?</span>'; }
 }
 
 syncWho();
